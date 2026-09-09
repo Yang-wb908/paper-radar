@@ -51,7 +51,9 @@ import com.example.ui.notifications.NotificationsScreen
 import com.example.ui.notifications.NotificationsViewModel
 import com.example.ui.notifications.NotificationsViewModelFactory
 import com.example.ui.search.SearchViewModelFactory
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
+import com.example.ui.settings.ARXIV_SOURCE_LABEL
 import com.example.ui.settings.SettingsScreen
 import com.example.ui.settings.SettingsViewModel
 
@@ -151,8 +153,12 @@ fun AppNavHost(
                 val viewModel: NotificationsViewModel =
                     viewModel(factory = NotificationsViewModelFactory(concrete))
                 val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+                val prefs by viewModel.prefs.collectAsStateWithLifecycle()
                 NotificationsScreen(
                     uiState = uiState,
+                    prefs = prefs,
+                    onToggleNotifications = viewModel::toggleNotifications,
+                    onToggleField = viewModel::toggleField,
                     onToggleBookmark = viewModel::toggleBookmark,
                     onNavigateToDetail = { paperId -> navController.navigate("detail/$paperId") }
                 )
@@ -169,13 +175,19 @@ fun AppNavHost(
             composable(Screen.Settings.route) {
                 val viewModel: SettingsViewModel = viewModel()
                 val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-                // 설정의 관심 분야·알림 스위치를 백그라운드 워커가 보는 저장소에 반영한다.
-                LaunchedEffect(uiState.fields, uiState.notificationsEnabled) {
-                    val selected = uiState.fields.filterValues { it }.keys
-                        .mapNotNull { Field.fromLabel(it) }
+                val concrete = repository as? NetworkPaperRepository
+                // 저장돼 있던 소스 설정을 먼저 불러오고, 그 뒤의 토글만 저장소에 반영한다.
+                LaunchedEffect(concrete) {
+                    val saved = concrete?.sourcePrefs()?.first() ?: return@LaunchedEffect
+                    viewModel.applySourcePrefs(saved.disabledJournals, saved.arxivEnabled)
+                }
+                LaunchedEffect(uiState.journals, uiState.sourcePrefsLoaded) {
+                    if (!uiState.sourcePrefsLoaded) return@LaunchedEffect
+                    val disabled = uiState.journals.filterValues { !it }.keys
+                        .filter { it != ARXIV_SOURCE_LABEL }
                         .toSet()
-                    (repository as? NetworkPaperRepository)
-                        ?.updateNotificationPrefs(selected, uiState.notificationsEnabled)
+                    val arxiv = uiState.journals[ARXIV_SOURCE_LABEL] ?: true
+                    concrete?.updateSourcePrefs(disabled, arxiv)
                 }
                 SettingsScreen(
                     uiState = uiState,

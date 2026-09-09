@@ -186,3 +186,68 @@ object ArxivSource {
         }
     }
 }
+
+/**
+ * ChemRxiv 프리프린트. 재료·에너지·촉매 쪽이 arXiv보다 여기로 먼저 올라온다.
+ * 공개 API라 키가 필요 없고 초록이 항상 붙어 있다.
+ */
+object ChemRxivSource {
+
+    private const val BASE = "https://chemrxiv.org/engage/chemrxiv/public-api/v1/items"
+
+    suspend fun fetchRecent(limit: Int = 50): List<Paper> = withContext(Dispatchers.IO) {
+        val url = BASE + "?limit=" + limit + "&sort=PUBLISHED_DATE_DESC"
+        val root = Http.getJson(url) ?: return@withContext emptyList()
+        val hits = root.optJSONArray("itemHits") ?: return@withContext emptyList()
+
+        val out = ArrayList<Paper>()
+        for (i in 0 until hits.length()) {
+            val item = hits.optJSONObject(i)?.optJSONObject("item") ?: continue
+            parseItem(item)?.let { out.add(it) }
+        }
+        Log.i(TAG, "ChemRxiv returned " + out.size + " preprints")
+        out
+    }
+
+    private fun parseItem(item: org.json.JSONObject): Paper? {
+        val title = cleanTitle(item.optString("title"))
+        if (title.isBlank()) return null
+        val doi = normalizeDoi(item.optString("doi"))
+        val id = doi ?: ("chemrxiv:" + item.optString("id")).takeIf { it.length > 9 } ?: return null
+
+        val abstract = stripMarkup(if (item.isNull("abstract")) null else item.optString("abstract"))
+
+        val names = ArrayList<String>()
+        item.optJSONArray("authors")?.let { arr ->
+            for (i in 0 until arr.length()) {
+                val a = arr.optJSONObject(i) ?: continue
+                val name = (a.optString("firstName") + " " + a.optString("lastName")).trim()
+                if (name.isNotBlank()) names.add(name)
+            }
+        }
+
+        val categories = ArrayList<String>()
+        item.optJSONArray("categories")?.let { arr ->
+            for (i in 0 until arr.length()) {
+                val name = arr.optJSONObject(i)?.optString("name")
+                if (!name.isNullOrBlank()) categories.add(name)
+            }
+        }
+
+        val url = doi?.let { "https://doi.org/" + it }
+            ?: ("https://chemrxiv.org/engage/chemrxiv/article-details/" + item.optString("id"))
+
+        return Paper(
+            id = id,
+            title = title,
+            authorsLine = authorsLine(names),
+            journal = "ChemRxiv",
+            publishedDate = parseIsoDay(item.optString("publishedDate").take(10)),
+            abstractText = abstract,
+            url = url,
+            fields = FieldTagger.tag(null, title, abstract, categories),
+            isBookmarked = false,
+            isRead = false
+        )
+    }
+}

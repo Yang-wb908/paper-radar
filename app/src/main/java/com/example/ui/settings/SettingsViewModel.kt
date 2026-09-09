@@ -5,6 +5,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import com.example.data.JournalCatalog
+
+/** 설정 화면의 저널 목록에서 arXiv 전체를 대표하는 항목 이름. */
+const val ARXIV_SOURCE_LABEL = "arXiv 프리프린트 (전체 카테고리)"
 
 data class SettingsUiState(
     val fields: Map<String, Boolean> = mapOf(
@@ -13,15 +17,9 @@ data class SettingsUiState(
         "통신·신호처리·회로" to true,
         "에너지·배터리·광학" to true
     ),
-    val journals: Map<String, Boolean> = listOf(
-        "Nature", "Science", "Science Advances", "Nature Communications", "Nature Materials",
-        "Nature Electronics", "Nature Nanotechnology", "Nature Machine Intelligence",
-        "Nature Computational Science", "Nature Energy", "Nature Photonics", "Advanced Materials",
-        "Advanced Functional Materials", "Advanced Energy Materials", "IEEE Electron Device Letters",
-        "IEEE Transactions on Electron Devices", "IEEE Journal of Solid-State Circuits",
-        "IEEE Transactions on Communications", "IEEE Transactions on Signal Processing",
-        "IEEE Transactions on Pattern Analysis and Machine Intelligence", "Joule", "Light: Science & Applications"
-    ).associateWith { true },
+    val journals: Map<String, Boolean> =
+        (listOf(ARXIV_SOURCE_LABEL) + JournalCatalog.ALL.map { it.name }).associateWith { true },
+    val sourcePrefsLoaded: Boolean = false,
     val notificationsEnabled: Boolean = true,
     val syncPeriod: String = "1시간",
     val quietTimeStart: String = "23:00",
@@ -41,6 +39,16 @@ class SettingsViewModel : ViewModel() {
             val newFields = state.fields.toMutableMap()
             newFields[fieldName] = !(newFields[fieldName] ?: true)
             state.copy(fields = newFields)
+        }
+    }
+
+    /** 저장소에 남아 있던 소스 설정을 화면 상태에 반영한다. 한 번만 호출된다. */
+    fun applySourcePrefs(disabledJournals: Set<String>, arxivEnabled: Boolean) {
+        _uiState.update { state ->
+            val next = state.journals.keys.associateWith { name ->
+                if (name == ARXIV_SOURCE_LABEL) arxivEnabled else !disabledJournals.contains(name)
+            }
+            state.copy(journals = next, sourcePrefsLoaded = true)
         }
     }
 

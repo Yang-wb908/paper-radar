@@ -17,6 +17,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalContext
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import com.example.ui.components.EmptyState
 import com.example.ui.components.FieldChip
 import com.example.ui.components.JournalBadge
@@ -33,6 +39,7 @@ fun DetailScreen(
     val scrollState = rememberScrollState()
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     Scaffold(
         modifier = modifier,
@@ -150,8 +157,10 @@ fun DetailScreen(
                 // Primary Action Button
                 Button(
                     onClick = {
-                        coroutineScope.launch {
-                            snackbarHostState.showSnackbar("원문 링크 열기: ${paper.url}")
+                        try {
+                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(paper.url)))
+                        } catch (e: Exception) {
+                            coroutineScope.launch { snackbarHostState.showSnackbar("링크를 열 수 없습니다: " + paper.url) }
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),
@@ -168,9 +177,9 @@ fun DetailScreen(
                     horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
                     TextButton(onClick = {
-                        coroutineScope.launch {
-                            snackbarHostState.showSnackbar("DOI 복사됨: ${paper.id}")
-                        }
+                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                        clipboard?.setPrimaryClip(ClipData.newPlainText("DOI", paper.id))
+                        coroutineScope.launch { snackbarHostState.showSnackbar("복사됨: " + paper.id) }
                     }) {
                         Icon(Icons.Filled.ContentCopy, contentDescription = "DOI 복사", modifier = Modifier.size(20.dp))
                         Spacer(modifier = Modifier.width(8.dp))
@@ -178,8 +187,15 @@ fun DetailScreen(
                     }
 
                     TextButton(onClick = {
-                        coroutineScope.launch {
-                            snackbarHostState.showSnackbar("공유하기")
+                        val share = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_SUBJECT, paper.displayTitle)
+                            putExtra(Intent.EXTRA_TEXT, paper.displayTitle + "\n" + paper.url)
+                        }
+                        try {
+                            context.startActivity(Intent.createChooser(share, "논문 공유"))
+                        } catch (e: Exception) {
+                            coroutineScope.launch { snackbarHostState.showSnackbar("공유할 앱이 없습니다") }
                         }
                     }) {
                         Icon(Icons.Filled.Share, contentDescription = "공유", modifier = Modifier.size(20.dp))

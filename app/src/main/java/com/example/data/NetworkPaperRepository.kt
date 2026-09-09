@@ -12,6 +12,18 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
+/** 알림 탭이 구독하는 알림 설정. */
+data class NotifPrefs(
+    val enabledFields: Set<Field> = setOf(Field.SEMI, Field.AI, Field.COMM, Field.ENERGY),
+    val notificationsEnabled: Boolean = true
+)
+
+/** 설정 탭이 구독하는 소스 설정. */
+data class SourcePrefs(
+    val disabledJournals: Set<String> = emptySet(),
+    val arxivEnabled: Boolean = true
+)
+
 /**
  * OpenAlex를 1차, Crossref를 2차로 쓰는 수집 저장소.
  * 결과는 PaperStore(JSON)로 영속화해서 앱을 껐다 켜도, 백그라운드 워커가 돌아도 이어진다.
@@ -24,6 +36,8 @@ class NetworkPaperRepository(
     private val papers = MutableStateFlow<List<Paper>>(emptyList())
     private val bookmarks = MutableStateFlow<Set<String>>(emptySet())
     private val notifLog = MutableStateFlow<List<NotifEvent>>(emptyList())
+    private val notifPrefs = MutableStateFlow(NotifPrefs())
+    private val sourcePrefs = MutableStateFlow(SourcePrefs())
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val refreshLock = Mutex()
 
@@ -55,6 +69,8 @@ class NetworkPaperRepository(
         enabledFields = saved.enabledFields.ifEmpty { enabledFields }
         notificationsEnabled = saved.notificationsEnabled
         lastSyncMillis = saved.lastSyncMillis
+        notifPrefs.value = NotifPrefs(enabledFields, notificationsEnabled)
+        sourcePrefs.value = SourcePrefs(saved.disabledJournals, saved.arxivEnabled)
         Log.i(TAG, "restored " + saved.papers.size + " papers from disk")
     }
 
@@ -81,6 +97,18 @@ class NetworkPaperRepository(
         if (fields == enabledFields && enabled == notificationsEnabled) return
         enabledFields = fields
         notificationsEnabled = enabled
+        notifPrefs.value = NotifPrefs(fields, enabled)
+        persist()
+    }
+
+    fun notificationPrefs(): Flow<NotifPrefs> = notifPrefs
+
+    fun sourcePrefs(): Flow<SourcePrefs> = sourcePrefs
+
+    suspend fun updateSourcePrefs(disabledJournals: Set<String>, arxivEnabled: Boolean) {
+        val next = SourcePrefs(disabledJournals, arxivEnabled)
+        if (next == sourcePrefs.value) return
+        sourcePrefs.value = next
         persist()
     }
 
@@ -136,25 +164,28 @@ class NetworkPaperRepository(
             val lookbackDays = if (lastSyncMillis == 0L) 21 else 3
             val sinceDay = isoDay(now - lookbackDays * DAY_MILLIS)
 
-            var fetched = OpenAlexSource.fetchRecent(journals, sinceDay)
+            val activeJournals = journals.filter { !sourcePrefs.value.disabledJournals.contains(it.name) }
+            var fetched = OpenAlexSource.fetchRecent(activeJournals, sinceDay)
 
             if (fetched.isEmpty()) {
                 Log.w(TAG, "OpenAlex empty - falling back to Crossref per journal")
                 val collected = ArrayList<Paper>()
-                for (journal in journals) {
+                for (journal in activeJournals) {
                     collected.addAll(CrossrefSource.fetchJournalWorks(journal, sinceDay))
                 }
                 fetched = collected
             }
 
-            // arXiv 프리프린트는 저널과 별개 축이라 항상 함께 받는다.
-            fetched = fetched + ArxivSource.fetchRecent()
+            // 프리프린트: arXiv(설정으로 on/off) + ChemRxiv
+            if (sourcePrefs.value.arxivEnabled) fetched = fetched + ArxivSource.fetchRecent()
+            fetched = fetched + ChemRxivSource.fetchRecent()
 
             if (fetched.isEmpty()) {
                 return@withLock Result.failure(IllegalStateException("수집된 논문이 없습니다"))
             }
 
-            val enriched = fillMissingAbstracts(fetched)
+            // 초록 보강: Crossref → Semantic Scholar 순. IEEE 결손이 주 대상.
+            val enriched = SemanticScholarSource.fillAbstracts(fillMissingAbstracts(fetched))
 
             val merged = LinkedHashMap<String, Paper>()
             papers.value.forEach { merged[it.id] = it }
@@ -209,7 +240,9 @@ class NetworkPaperRepository(
                 enabledFields = enabledFields,
                 notificationsEnabled = notificationsEnabled,
                 lastSyncMillis = lastSyncMillis,
-                notifLog = notifLog.value
+                notifLog = notifLog.value,
+                disabledJournals = sourcePrefs.value.disabledJournals,
+                arxivEnabled = sourcePrefs.value.arxivEnabled
             )
         )
     }

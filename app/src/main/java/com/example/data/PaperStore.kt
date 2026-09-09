@@ -19,7 +19,9 @@ data class StoredState(
     val enabledFields: Set<Field> = setOf(Field.SEMI, Field.AI, Field.COMM, Field.ENERGY),
     val notificationsEnabled: Boolean = true,
     val lastSyncMillis: Long = 0L,
-    val notifLog: List<NotifEvent> = emptyList()
+    val notifLog: List<NotifEvent> = emptyList(),
+    val disabledJournals: Set<String> = emptySet(),
+    val arxivEnabled: Boolean = true
 )
 
 /** 알림 탭에 쌓이는 발송 기록 한 건. */
@@ -52,7 +54,9 @@ class PaperStore(context: Context) {
                 enabledFields = parseFields(root.optJSONArray("enabledFields")),
                 notificationsEnabled = root.optBoolean("notificationsEnabled", true),
                 lastSyncMillis = root.optLong("lastSyncMillis", 0L),
-                notifLog = parseNotifLog(root.optJSONArray("notifLog"))
+                notifLog = parseNotifLog(root.optJSONArray("notifLog")),
+                disabledJournals = parseStrings(root.optJSONArray("disabledJournals")),
+                arxivEnabled = root.optBoolean("arxivEnabled", true)
             )
         } catch (e: Exception) {
             Log.w(TAG, "store load failed: " + e.message)
@@ -87,6 +91,8 @@ class PaperStore(context: Context) {
                 )
             }
             root.put("notifLog", notifLog)
+            root.put("disabledJournals", JSONArray(state.disabledJournals.toList()))
+            root.put("arxivEnabled", state.arxivEnabled)
             file.writeText(root.toString())
         } catch (e: Exception) {
             Log.w(TAG, "store save failed: " + e.message)

@@ -9,6 +9,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.ui.platform.LocalContext
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -154,6 +158,24 @@ fun PaperCard(
                         }
                     }
 
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    val context = LocalContext.current
+                    IconButton(
+                        onClick = {
+                            try {
+                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(paper.url)))
+                            } catch (e: Exception) {
+                            }
+                        },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                            contentDescription = "원문 열기",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                     IconButton(
                         onClick = onBookmarkClick,
                         modifier = Modifier.size(32.dp)
@@ -163,6 +185,7 @@ fun PaperCard(
                             contentDescription = "Bookmark",
                             tint = if (paper.isBookmarked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                    }
                     }
                 }
             }

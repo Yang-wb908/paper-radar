@@ -53,14 +53,6 @@ fun SettingsScreen(
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
-            // Fields Section
-            item {
-                SectionTitle("관심 분야")
-                uiState.fields.forEach { (field, isEnabled) ->
-                    SwitchRow(label = field, checked = isEnabled, onCheckedChange = { onToggleField(field) })
-                }
-            }
-
             // Journals Section
             item {
                 SectionTitle("저널 소스")
@@ -74,95 +66,6 @@ fun SettingsScreen(
                 
                 uiState.journals.forEach { (journal, isEnabled) ->
                     SwitchRow(label = journal, checked = isEnabled, onCheckedChange = { onToggleJournal(journal) })
-                }
-            }
-
-            // Notifications Section
-            item {
-                SectionTitle("알림")
-                SwitchRow(label = "새 논문 알림 받기", checked = uiState.notificationsEnabled, onCheckedChange = { onToggleNotifications() })
-                
-                if (uiState.notificationsEnabled) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    
-                    // Sync Period Dropdown
-                    ExposedDropdownMenuBox(
-                        expanded = expandedSyncPeriod,
-                        onExpandedChange = { expandedSyncPeriod = !expandedSyncPeriod }
-                    ) {
-                        OutlinedTextField(
-                            value = uiState.syncPeriod,
-                            onValueChange = {},
-                            readOnly = true,
-                            label = { Text("동기화 주기") },
-                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedSyncPeriod) },
-                            colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
-                            modifier = Modifier.menuAnchor().fillMaxWidth()
-                        )
-                        ExposedDropdownMenu(
-                            expanded = expandedSyncPeriod,
-                            onDismissRequest = { expandedSyncPeriod = false }
-                        ) {
-                            listOf("1시간", "3시간", "6시간").forEach { selectionOption ->
-                                DropdownMenuItem(
-                                    text = { Text(selectionOption) },
-                                    onClick = {
-                                        onSetSyncPeriod(selectionOption)
-                                        expandedSyncPeriod = false
-                                    }
-                                )
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-                    
-                    // Quiet Time
-                    OutlinedTextField(
-                        value = "${uiState.quietTimeStart} - ${uiState.quietTimeEnd}",
-                        onValueChange = {},
-                        readOnly = true,
-                        label = { Text("방해금지 시간") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    Spacer(modifier = Modifier.height(16.dp))
-                    
-                    // Keywords
-                    Text("키워드 워치리스트", style = MaterialTheme.typography.labelLarge)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = keywordInput,
-                        onValueChange = { keywordInput = it },
-                        modifier = Modifier.fillMaxWidth(),
-                        placeholder = { Text("키워드 입력 후 엔터") },
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                        keyboardActions = KeyboardActions(onDone = {
-                            onAddKeyword(keywordInput)
-                            keywordInput = ""
-                        }),
-                        singleLine = true
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    
-                    @OptIn(ExperimentalLayoutApi::class)
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        uiState.keywords.forEach { keyword ->
-                            InputChip(
-                                selected = false,
-                                onClick = { onRemoveKeyword(keyword) },
-                                label = { Text(keyword) },
-                                trailingIcon = {
-                                    Icon(
-                                        Icons.Default.Close,
-                                        contentDescription = "삭제",
-                                        modifier = Modifier.size(16.dp),
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            )
-                        }
-                    }
                 }
             }
 

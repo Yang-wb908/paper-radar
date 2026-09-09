@@ -73,6 +73,28 @@ internal object Http {
         }
     }
 
+    /** JSON 배열을 돌려주는 API(Semantic Scholar batch)용. */
+    fun postText(url: String, payload: String): String? {
+        return try {
+            val media = "application/json; charset=utf-8".toMediaType()
+            val request = Request.Builder()
+                .url(url)
+                .post(payload.toRequestBody(media))
+                .header("User-Agent", USER_AGENT)
+                .build()
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    Log.w(TAG, "HTTP " + response.code + " <- " + url)
+                    return null
+                }
+                response.body?.string()
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "post failed: " + e.message)
+            null
+        }
+    }
+
     /** arXiv는 Atom XML이라 원문 텍스트가 필요하다. */
     fun getText(url: String): String? {
         return try {
@@ -127,10 +149,49 @@ internal fun invertedIndexToText(index: JSONObject?): String? {
     return text.ifBlank { null }
 }
 
+private val SUB_MAP = mapOf(
+    '0' to '₀', '1' to '₁', '2' to '₂', '3' to '₃', '4' to '₄',
+    '5' to '₅', '6' to '₆', '7' to '₇', '8' to '₈', '9' to '₉',
+    '+' to '₊', '-' to '₋', 'x' to 'ₓ', 'n' to 'ₙ'
+)
+
+private val SUP_MAP = mapOf(
+    '0' to '⁰', '1' to '¹', '2' to '²', '3' to '³', '4' to '⁴',
+    '5' to '⁵', '6' to '⁶', '7' to '⁷', '8' to '⁸', '9' to '⁹',
+    '+' to '⁺', '-' to '⁻', 'n' to 'ⁿ'
+)
+
+/** MoS<sub>2</sub> → MoS₂. 매핑이 없는 글자는 태그만 벗기고 그대로 둔다. */
+internal fun convertSubSup(raw: String): String {
+    var text = raw
+    text = Regex("(?is)<sub>(.*?)</sub>").replace(text) { m ->
+        m.groupValues[1].map { SUB_MAP[it] ?: it }.joinToString("")
+    }
+    text = Regex("(?is)<sup>(.*?)</sup>").replace(text) { m ->
+        m.groupValues[1].map { SUP_MAP[it] ?: it }.joinToString("")
+    }
+    return text
+}
+
+/** 제목에 섞여 오는 HTML(<sub>, <i>, &amp; 등)을 정리한다. */
+internal fun cleanTitle(raw: String?): String {
+    if (raw.isNullOrBlank() || raw == "null") return ""
+    return convertSubSup(raw)
+        .replace(Regex("<[^>]+>"), "")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&amp;", "&")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&nbsp;", " ")
+        .replace(Regex("\\s+"), " ")
+        .trim()
+}
+
 /** Crossref 초록은 JATS XML로 들어온다. 태그를 걷어낸다. */
 internal fun stripMarkup(raw: String?): String? {
     if (raw.isNullOrBlank()) return null
-    val text = raw
+    val text = convertSubSup(raw)
         .replace(Regex("<[^>]+>"), " ")
         .replace("&lt;", "<")
         .replace("&gt;", ">")
@@ -233,7 +294,7 @@ object OpenAlexSource {
 
     private fun parseWork(item: JSONObject): Paper? {
         val doi = normalizeDoi(item.optString("doi")) ?: return null
-        val title = item.optString("title").takeIf { it.isNotBlank() && it != "null" } ?: return null
+        val title = cleanTitle(item.optString("title")).takeIf { it.isNotBlank() } ?: return null
 
         val journal = item.optJSONObject("primary_location")
             ?.optJSONObject("source")
@@ -313,7 +374,7 @@ object CrossrefSource {
 
     private fun parseItem(item: JSONObject, journal: JournalSource): Paper? {
         val doi = normalizeDoi(item.optString("DOI")) ?: return null
-        val title = firstOf(item.optJSONArray("title")) ?: return null
+        val title = cleanTitle(firstOf(item.optJSONArray("title"))).takeIf { it.isNotBlank() } ?: return null
         val container = firstOf(item.optJSONArray("container-title")) ?: journal.name
         val abstract = if (item.isNull("abstract")) null else stripMarkup(item.optString("abstract"))
 
@@ -359,5 +420,51 @@ object CrossrefSource {
         val day = if (parts.length() > 2) parts.optInt(2, 1) else 1
         val text = String.format(Locale.US, "%04d-%02d-%02d", year, month, day)
         return parseIsoDay(text)
+    }
+}
+
+/**
+ * Semantic Scholar 배치 API로 초록을 한 번 더 보강한다.
+ * IEEE처럼 OpenAlex·Crossref 양쪽에 초록이 없는 논문이 주 대상. 키 없이 동작한다.
+ */
+object SemanticScholarSource {
+
+    private const val BATCH_URL =
+        "https://api.semanticscholar.org/graph/v1/paper/batch?fields=abstract"
+
+    suspend fun fillAbstracts(papers: List<Paper>, limit: Int = 100): List<Paper> = withContext(Dispatchers.IO) {
+        val targets = papers
+            .filter { it.abstractText == null && (it.id.startsWith("arxiv:") || it.id.contains('/')) }
+            .take(limit)
+        if (targets.isEmpty()) return@withContext papers
+
+        val ids = JSONArray()
+        for (paper in targets) {
+            ids.put(
+                if (paper.id.startsWith("arxiv:")) "ARXIV:" + paper.id.removePrefix("arxiv:")
+                else "DOI:" + paper.id
+            )
+        }
+        val body = JSONObject().put("ids", ids).toString()
+        val text = Http.postText(BATCH_URL, body) ?: return@withContext papers
+
+        val array = try {
+            JSONArray(text)
+        } catch (e: Exception) {
+            return@withContext papers
+        }
+
+        val found = HashMap<String, String>()
+        val count = minOf(array.length(), targets.size)
+        for (i in 0 until count) {
+            val entry = array.optJSONObject(i) ?: continue
+            if (entry.isNull("abstract")) continue
+            val abstract = stripMarkup(entry.optString("abstract")) ?: continue
+            found[targets[i].id] = abstract
+        }
+        if (found.isEmpty()) return@withContext papers
+        Log.i(TAG, "Semantic Scholar filled " + found.size + " abstracts")
+
+        papers.map { paper -> found[paper.id]?.let { paper.copy(abstractText = it) } ?: paper }
     }
 }
