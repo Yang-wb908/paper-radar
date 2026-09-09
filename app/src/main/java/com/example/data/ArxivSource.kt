@@ -34,7 +34,11 @@ object ArxivCatalog {
         ArxivCategory("cs.IT", "정보이론", setOf(Field.COMM)),
 
         ArxivCategory("physics.optics", "광학", setOf(Field.ENERGY)),
-        ArxivCategory("cond-mat.supr-con", "초전도", setOf(Field.ENERGY))
+        ArxivCategory("cond-mat.supr-con", "초전도", setOf(Field.ENERGY)),
+
+        ArxivCategory("q-bio.NC", "신경과학", setOf(Field.BIO)),
+        ArxivCategory("q-bio.QM", "정량생물학", setOf(Field.BIO)),
+        ArxivCategory("q-bio.BM", "생체분자", setOf(Field.BIO))
     )
 
     fun fieldsFor(codes: List<String>): Set<Field> {
@@ -246,6 +250,59 @@ object ChemRxivSource {
             abstractText = abstract,
             url = url,
             fields = FieldTagger.tag(null, title, abstract, categories),
+            isBookmarked = false,
+            isRead = false
+        )
+    }
+}
+
+/**
+ * bioRxiv 프리프린트. 생명·바이오 분야는 저널보다 여기로 먼저 올라온다.
+ * 날짜 구간 API라 최근 이틀치만 받아 건수를 통제한다.
+ */
+object BioRxivSource {
+
+    private const val BASE = "https://api.biorxiv.org/details/biorxiv/"
+
+    suspend fun fetchRecent(fromDay: String, toDay: String): List<Paper> = withContext(Dispatchers.IO) {
+        val url = BASE + fromDay + "/" + toDay + "/0"
+        val root = Http.getJson(url) ?: return@withContext emptyList()
+        val items = root.optJSONArray("collection") ?: return@withContext emptyList()
+
+        val out = ArrayList<Paper>()
+        for (i in 0 until items.length()) {
+            val item = items.optJSONObject(i) ?: continue
+            parseItem(item)?.let { out.add(it) }
+        }
+        Log.i(TAG, "bioRxiv returned " + out.size + " preprints")
+        out
+    }
+
+    private fun parseItem(item: org.json.JSONObject): Paper? {
+        val title = cleanTitle(item.optString("title"))
+        val doi = normalizeDoi(item.optString("doi")) ?: return null
+        if (title.isBlank()) return null
+
+        val abstract = stripMarkup(if (item.isNull("abstract")) null else item.optString("abstract"))
+        val names = item.optString("authors")
+            .split(";")
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+        val category = item.optString("category").takeIf { it.isNotBlank() }
+
+        val fields = LinkedHashSet<Field>()
+        fields.add(Field.BIO)
+        fields.addAll(FieldTagger.tag(null, title, abstract, listOfNotNull(category)).filter { it != Field.OTHER })
+
+        return Paper(
+            id = doi,
+            title = title,
+            authorsLine = authorsLine(names),
+            journal = "bioRxiv",
+            publishedDate = parseIsoDay(item.optString("date").take(10)),
+            abstractText = abstract,
+            url = "https://doi.org/" + doi,
+            fields = fields,
             isBookmarked = false,
             isRead = false
         )

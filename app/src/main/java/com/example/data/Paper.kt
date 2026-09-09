@@ -5,6 +5,7 @@ enum class Field(val labelKo: String) {
     AI("AI·머신러닝·컴퓨팅"),
     COMM("통신·신호처리·회로"),
     ENERGY("에너지·배터리·광학"),
+    BIO("생명·바이오·의공학"),
     OTHER("기타");
 
     companion object {
@@ -39,6 +40,10 @@ data class Paper(
 
     val isTranslated: Boolean
         get() = titleKo != null
+
+    /** arXiv·ChemRxiv·bioRxiv처럼 심사 전 원고인지. 홈에서 끄고 켤 수 있다. */
+    val isPreprint: Boolean
+        get() = journal.startsWith("arXiv") || journal == "ChemRxiv" || journal == "bioRxiv"
 
     /** 번역 대상인지. 초록이 없어도 제목은 번역한다. */
     val needsTranslation: Boolean

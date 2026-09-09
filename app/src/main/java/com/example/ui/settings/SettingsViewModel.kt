@@ -25,8 +25,8 @@ data class SettingsUiState(
     val quietTimeStart: String = "23:00",
     val quietTimeEnd: String = "08:00",
     val keywords: List<String> = emptyList(),
-    val lastSyncTime: String = "2024-05-20 14:30:00",
-    val savedPaperCount: Int = 15 // Just a dummy value for UI
+    val lastSyncTime: String = "아직 동기화 전",
+    val savedPaperCount: Int = 0
 )
 
 class SettingsViewModel : ViewModel() {
@@ -50,6 +50,17 @@ class SettingsViewModel : ViewModel() {
             }
             state.copy(journals = next, sourcePrefsLoaded = true)
         }
+    }
+
+    /** 저장소의 실제 동기화 시각·건수를 화면에 반영한다. */
+    fun applySyncInfo(lastSyncMillis: Long, paperCount: Int) {
+        val label = if (lastSyncMillis == 0L) {
+            "아직 동기화 전"
+        } else {
+            java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.KOREA)
+                .format(java.util.Date(lastSyncMillis))
+        }
+        _uiState.update { it.copy(lastSyncTime = label, savedPaperCount = paperCount) }
     }
 
     fun toggleJournal(journalName: String) {

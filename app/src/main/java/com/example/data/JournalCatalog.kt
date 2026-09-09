@@ -18,6 +18,7 @@ object JournalCatalog {
     private val AI = setOf(Field.AI)
     private val COMM = setOf(Field.COMM)
     private val ENERGY = setOf(Field.ENERGY)
+    private val BIO = setOf(Field.BIO)
 
     /** 종합지: 저널만으로 분야를 판정할 수 없어 토픽·키워드 태깅에 맡긴다. */
     private val GENERAL = emptySet<Field>()
@@ -71,7 +72,16 @@ object JournalCatalog {
         JournalSource("Physical Review Letters", "0031-9007", GENERAL),
         JournalSource("Proceedings of the National Academy of Sciences", "0027-8424", GENERAL),
         JournalSource("Nature Reviews Physics", "2522-5820", GENERAL),
-        JournalSource("Cell Reports Physical Science", "2666-3864", GENERAL)
+        JournalSource("Cell Reports Physical Science", "2666-3864", GENERAL),
+
+        JournalSource("Nature Biotechnology", "1087-0156", BIO),
+        JournalSource("Nature Biomedical Engineering", "2157-846X", BIO),
+        JournalSource("Nature Methods", "1548-7091", BIO),
+        JournalSource("Nature Medicine", "1078-8956", BIO),
+        JournalSource("Nature Neuroscience", "1097-6256", BIO),
+        JournalSource("Cell", "0092-8674", BIO),
+        JournalSource("Science Translational Medicine", "1946-6234", BIO),
+        JournalSource("Cell Systems", "2405-4712", BIO)
     )
 
     fun byName(name: String?): JournalSource? {
@@ -120,6 +130,14 @@ object FieldTagger {
         "thermoelectric", "electrocatal"
     )
 
+    private val BIO_KEYS = listOf(
+        "protein", "genome", "gene ", "genetic", "crispr", "cell ", "cells", "cellular",
+        "neuron", "neural circuit", "brain", "tumor", "cancer", "immune", "antibody",
+        "rna", "dna", "enzyme", "microbio", "biosensor", "organoid", "in vivo",
+        "in vitro", "clinical", "patient", "tissue", "drug", "therap", "bioengineer",
+        "biomedical", "single-cell", "sequencing"
+    )
+
     fun tag(
         journal: String?,
         title: String,
@@ -141,6 +159,7 @@ object FieldTagger {
         if (AI_KEYS.any { hay.contains(it) }) hits.add(Field.AI)
         if (COMM_KEYS.any { hay.contains(it) }) hits.add(Field.COMM)
         if (ENERGY_KEYS.any { hay.contains(it) }) hits.add(Field.ENERGY)
+        if (BIO_KEYS.any { hay.contains(it) }) hits.add(Field.BIO)
 
         return if (hits.isEmpty()) setOf(Field.OTHER) else hits
     }

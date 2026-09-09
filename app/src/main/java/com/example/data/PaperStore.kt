@@ -16,12 +16,13 @@ data class StoredState(
     val papers: List<Paper> = emptyList(),
     val bookmarks: Set<String> = emptySet(),
     val notified: Set<String> = emptySet(),
-    val enabledFields: Set<Field> = setOf(Field.SEMI, Field.AI, Field.COMM, Field.ENERGY),
+    val enabledFields: Set<Field> = setOf(Field.SEMI, Field.AI, Field.COMM, Field.ENERGY, Field.BIO),
     val notificationsEnabled: Boolean = true,
     val lastSyncMillis: Long = 0L,
     val notifLog: List<NotifEvent> = emptyList(),
     val disabledJournals: Set<String> = emptySet(),
-    val arxivEnabled: Boolean = true
+    val arxivEnabled: Boolean = true,
+    val sourceIds: Map<String, String> = emptyMap()
 )
 
 /** 알림 탭에 쌓이는 발송 기록 한 건. */
@@ -56,7 +57,8 @@ class PaperStore(context: Context) {
                 lastSyncMillis = root.optLong("lastSyncMillis", 0L),
                 notifLog = parseNotifLog(root.optJSONArray("notifLog")),
                 disabledJournals = parseStrings(root.optJSONArray("disabledJournals")),
-                arxivEnabled = root.optBoolean("arxivEnabled", true)
+                arxivEnabled = root.optBoolean("arxivEnabled", true),
+                sourceIds = parseStringMap(root.optJSONObject("sourceIds"))
             )
         } catch (e: Exception) {
             Log.w(TAG, "store load failed: " + e.message)
@@ -93,6 +95,7 @@ class PaperStore(context: Context) {
             root.put("notifLog", notifLog)
             root.put("disabledJournals", JSONArray(state.disabledJournals.toList()))
             root.put("arxivEnabled", state.arxivEnabled)
+            root.put("sourceIds", JSONObject(state.sourceIds))
             file.writeText(root.toString())
         } catch (e: Exception) {
             Log.w(TAG, "store save failed: " + e.message)
@@ -154,6 +157,18 @@ class PaperStore(context: Context) {
                     isRead = o.optBoolean("isRead", false)
                 )
             )
+        }
+        return out
+    }
+
+    private fun parseStringMap(obj: JSONObject?): Map<String, String> {
+        if (obj == null) return emptyMap()
+        val out = HashMap<String, String>()
+        val keys = obj.keys()
+        while (keys.hasNext()) {
+            val key = keys.next()
+            val value = obj.optString(key)
+            if (value.isNotBlank()) out[key] = value
         }
         return out
     }

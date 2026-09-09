@@ -26,6 +26,7 @@ fun SettingsScreen(
     onSetSyncPeriod: (String) -> Unit,
     onAddKeyword: (String) -> Unit,
     onRemoveKeyword: (String) -> Unit,
+    onSyncNow: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
@@ -73,10 +74,11 @@ fun SettingsScreen(
             item {
                 SectionTitle("데이터")
                 Text("마지막 동기화: ${uiState.lastSyncTime}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("저장된 더미 논문 건수: ${uiState.savedPaperCount}건", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("저장된 논문: ${uiState.savedPaperCount}건", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(modifier = Modifier.height(16.dp))
                 Button(
                     onClick = {
+                        onSyncNow()
                         coroutineScope.launch {
                             snackbarHostState.showSnackbar("동기화를 시작합니다.")
                         }

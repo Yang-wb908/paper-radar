@@ -34,6 +34,7 @@ fun getFieldColor(field: Field): Color {
         Field.AI -> FieldColorAI
         Field.COMM -> FieldColorComm
         Field.ENERGY -> FieldColorEnergy
+        Field.BIO -> FieldColorBio
         Field.OTHER -> FieldColorOther
     }
 }

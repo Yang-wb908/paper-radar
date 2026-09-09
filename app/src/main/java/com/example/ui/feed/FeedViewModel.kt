@@ -16,34 +16,43 @@ import kotlinx.coroutines.launch
 data class FeedUiState(
     val papers: List<Paper> = emptyList(),
     val selectedField: Field? = null, // null means "All"
-    val isRefreshing: Boolean = false
+    val isRefreshing: Boolean = false,
+    val showPreprints: Boolean = true
 )
 
 class FeedViewModel(private val repository: PaperRepository) : ViewModel() {
 
     private val _isRefreshing = MutableStateFlow(false)
     private val _selectedField = MutableStateFlow<Field?>(null)
+    private val _showPreprints = MutableStateFlow(true)
 
     val uiState: StateFlow<FeedUiState> = combine(
         repository.getPapers(),
         _selectedField,
-        _isRefreshing
-    ) { papers, selectedField, isRefreshing ->
+        _isRefreshing,
+        _showPreprints
+    ) { papers, selectedField, isRefreshing, showPreprints ->
+        val visible = if (showPreprints) papers else papers.filter { !it.isPreprint }
         val filteredPapers = if (selectedField == null) {
-            papers
+            visible
         } else {
-            papers.filter { it.fields.contains(selectedField) }
+            visible.filter { it.fields.contains(selectedField) }
         }
         FeedUiState(
             papers = filteredPapers.sortedByDescending { it.publishedDate },
             selectedField = selectedField,
-            isRefreshing = isRefreshing
+            isRefreshing = isRefreshing,
+            showPreprints = showPreprints
         )
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = FeedUiState()
     )
+
+    fun togglePreprints() {
+        _showPreprints.value = !_showPreprints.value
+    }
 
     fun setFieldFilter(field: Field?) {
         _selectedField.value = field

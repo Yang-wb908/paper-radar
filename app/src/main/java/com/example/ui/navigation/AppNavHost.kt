@@ -31,6 +31,8 @@ import androidx.navigation.navArgument
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.ui.platform.LocalContext
 import com.example.data.AppGraph
 import com.example.data.Field
@@ -129,6 +131,7 @@ fun AppNavHost(
                 FeedScreen(
                     uiState = uiState,
                     onFilterSelected = viewModel::setFieldFilter,
+                    onTogglePreprints = viewModel::togglePreprints,
                     onToggleBookmark = viewModel::toggleBookmark,
                     onRefresh = viewModel::refresh,
                     onNavigateToSearch = { navController.navigate(Screen.Search.route) },
@@ -181,6 +184,12 @@ fun AppNavHost(
                     val saved = concrete?.sourcePrefs()?.first() ?: return@LaunchedEffect
                     viewModel.applySourcePrefs(saved.disabledJournals, saved.arxivEnabled)
                 }
+                val syncScope = rememberCoroutineScope()
+                LaunchedEffect(concrete) {
+                    concrete?.syncInfo()?.collect { info ->
+                        viewModel.applySyncInfo(info.lastSyncMillis, info.paperCount)
+                    }
+                }
                 LaunchedEffect(uiState.journals, uiState.sourcePrefsLoaded) {
                     if (!uiState.sourcePrefsLoaded) return@LaunchedEffect
                     val disabled = uiState.journals.filterValues { !it }.keys
@@ -197,7 +206,8 @@ fun AppNavHost(
                     onToggleNotifications = viewModel::toggleNotifications,
                     onSetSyncPeriod = viewModel::setSyncPeriod,
                     onAddKeyword = viewModel::addKeyword,
-                    onRemoveKeyword = viewModel::removeKeyword
+                    onRemoveKeyword = viewModel::removeKeyword,
+                    onSyncNow = { syncScope.launch { concrete?.refresh() } }
                 )
             }
             composable(

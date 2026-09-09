@@ -27,5 +27,6 @@ val FieldColorSemi = Color(0xFF5AB4C2)
 val FieldColorAI = Color(0xFF9E8CFC)
 val FieldColorComm = Color(0xFFDF9F5C)
 val FieldColorEnergy = Color(0xFF6AA771)
+val FieldColorBio = Color(0xFFE08AA6)
 val FieldColorOther = Color(0xFF888888)
 

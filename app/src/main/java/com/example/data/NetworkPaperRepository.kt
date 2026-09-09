@@ -14,8 +14,14 @@ import kotlinx.coroutines.sync.withLock
 
 /** 알림 탭이 구독하는 알림 설정. */
 data class NotifPrefs(
-    val enabledFields: Set<Field> = setOf(Field.SEMI, Field.AI, Field.COMM, Field.ENERGY),
+    val enabledFields: Set<Field> = setOf(Field.SEMI, Field.AI, Field.COMM, Field.ENERGY, Field.BIO),
     val notificationsEnabled: Boolean = true
+)
+
+/** 설정 탭의 "데이터" 섹션용. */
+data class SyncInfo(
+    val lastSyncMillis: Long = 0L,
+    val paperCount: Int = 0
 )
 
 /** 설정 탭이 구독하는 소스 설정. */
@@ -38,6 +44,7 @@ class NetworkPaperRepository(
     private val notifLog = MutableStateFlow<List<NotifEvent>>(emptyList())
     private val notifPrefs = MutableStateFlow(NotifPrefs())
     private val sourcePrefs = MutableStateFlow(SourcePrefs())
+    private val lastSync = MutableStateFlow(0L)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val refreshLock = Mutex()
 
@@ -45,7 +52,7 @@ class NetworkPaperRepository(
     private var notified: Set<String> = emptySet()
 
     @Volatile
-    private var enabledFields: Set<Field> = setOf(Field.SEMI, Field.AI, Field.COMM, Field.ENERGY)
+    private var enabledFields: Set<Field> = setOf(Field.SEMI, Field.AI, Field.COMM, Field.ENERGY, Field.BIO)
 
     @Volatile
     private var notificationsEnabled: Boolean = true
@@ -69,8 +76,10 @@ class NetworkPaperRepository(
         enabledFields = saved.enabledFields.ifEmpty { enabledFields }
         notificationsEnabled = saved.notificationsEnabled
         lastSyncMillis = saved.lastSyncMillis
+        lastSync.value = saved.lastSyncMillis
         notifPrefs.value = NotifPrefs(enabledFields, notificationsEnabled)
         sourcePrefs.value = SourcePrefs(saved.disabledJournals, saved.arxivEnabled)
+        OpenAlexSource.preload(saved.sourceIds)
         Log.i(TAG, "restored " + saved.papers.size + " papers from disk")
     }
 
@@ -104,6 +113,9 @@ class NetworkPaperRepository(
     fun notificationPrefs(): Flow<NotifPrefs> = notifPrefs
 
     fun sourcePrefs(): Flow<SourcePrefs> = sourcePrefs
+
+    fun syncInfo(): Flow<SyncInfo> =
+        combine(lastSync, papers) { at, list -> SyncInfo(at, list.size) }
 
     suspend fun updateSourcePrefs(disabledJournals: Set<String>, arxivEnabled: Boolean) {
         val next = SourcePrefs(disabledJournals, arxivEnabled)
@@ -178,7 +190,7 @@ class NetworkPaperRepository(
 
             // 프리프린트: arXiv(설정으로 on/off) + ChemRxiv
             if (sourcePrefs.value.arxivEnabled) fetched = fetched + ArxivSource.fetchRecent()
-            fetched = fetched + ChemRxivSource.fetchRecent()
+            fetched = fetched + BioRxivSource.fetchRecent(isoDay(now - 2 * DAY_MILLIS), isoDay(now))
 
             if (fetched.isEmpty()) {
                 return@withLock Result.failure(IllegalStateException("수집된 논문이 없습니다"))
@@ -204,6 +216,7 @@ class NetworkPaperRepository(
             val ordered = merged.values.sortedByDescending { it.publishedDate }
             papers.value = GeminiTranslator.translate(ordered)
             lastSyncMillis = now
+            lastSync.value = now
             persist()
             Log.i(TAG, "refresh done: +" + added + " new, " + merged.size + " total")
             Result.success(added)
@@ -242,7 +255,8 @@ class NetworkPaperRepository(
                 lastSyncMillis = lastSyncMillis,
                 notifLog = notifLog.value,
                 disabledJournals = sourcePrefs.value.disabledJournals,
-                arxivEnabled = sourcePrefs.value.arxivEnabled
+                arxivEnabled = sourcePrefs.value.arxivEnabled,
+                sourceIds = OpenAlexSource.snapshot()
             )
         )
     }

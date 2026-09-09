@@ -26,6 +26,7 @@ import kotlinx.coroutines.launch
 fun FeedScreen(
     uiState: FeedUiState,
     onFilterSelected: (Field?) -> Unit,
+    onTogglePreprints: () -> Unit = {},
     onToggleBookmark: (String) -> Unit,
     onRefresh: () -> Unit,
     onNavigateToSearch: () -> Unit,
@@ -114,6 +115,17 @@ fun FeedScreen(
                                 coroutineScope.launch { listState.scrollToItem(0) }
                             }
                         )
+                }
+                // 프리프린트(arXiv·ChemRxiv·bioRxiv) 포함 여부 — 홈에서 바로 끄고 켠다
+                item {
+                    FilterChip(
+                        selected = uiState.showPreprints,
+                        onClick = {
+                            onTogglePreprints()
+                            coroutineScope.launch { listState.scrollToItem(0) }
+                        },
+                        label = { Text(if (uiState.showPreprints) "프리프린트 포함" else "프리프린트 제외") }
+                    )
                 }
             }
 

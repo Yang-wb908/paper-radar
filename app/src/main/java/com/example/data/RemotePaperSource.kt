@@ -229,6 +229,43 @@ object OpenAlexSource {
     private const val BASE = "https://api.openalex.org"
     private val sourceIdCache = mutableMapOf<String, String>()
 
+    /** 디스크에 저장해 둔 source id를 되살린다. 재시작마다 46번 검색하다 429 맞는 걸 막는다. */
+    fun preload(cache: Map<String, String>) {
+        sourceIdCache.putAll(cache)
+    }
+
+    fun snapshot(): Map<String, String> = HashMap(sourceIdCache)
+
+    /**
+     * ISSN이 있는 저널은 filter=issn:a|b|c 한 번으로 묶어 해석한다.
+     * 이름 검색은 ISSN이 없거나 매칭에 실패한 소수에만, 한 사이클에 5건까지.
+     */
+    suspend fun resolveAll(journals: List<JournalSource>): Map<String, JournalSource> = withContext(Dispatchers.IO) {
+        val missing = journals.filter { sourceIdCache[it.name] == null && it.issn != null }
+        for (chunk in missing.chunked(40)) {
+            val filter = "issn:" + chunk.joinToString("|") { it.issn.orEmpty() }
+            val url = BASE + "/sources?filter=" + enc(filter) +
+                "&per-page=50&select=id,issn,display_name&mailto=" + CONTACT
+            val results = Http.getJson(url)?.optJSONArray("results") ?: continue
+            for (i in 0 until results.length()) {
+                val item = results.optJSONObject(i) ?: continue
+                val id = item.optString("id").substringAfterLast('/')
+                if (id.isBlank()) continue
+                val issns = HashSet<String>()
+                item.optJSONArray("issn")?.let { arr ->
+                    for (k in 0 until arr.length()) issns.add(arr.optString(k))
+                }
+                chunk.firstOrNull { issns.contains(it.issn) }?.let { sourceIdCache[it.name] = id }
+            }
+        }
+        for (journal in journals.filter { sourceIdCache[it.name] == null }.take(5)) {
+            resolveSourceId(journal)
+        }
+        val out = LinkedHashMap<String, JournalSource>()
+        for (journal in journals) sourceIdCache[journal.name]?.let { out[it] = journal }
+        out
+    }
+
     suspend fun resolveSourceId(journal: JournalSource): String? = withContext(Dispatchers.IO) {
         sourceIdCache[journal.name]?.let { return@withContext it }
 
@@ -263,11 +300,7 @@ object OpenAlexSource {
         sinceDay: String,
         perPage: Int = 200
     ): List<Paper> = withContext(Dispatchers.IO) {
-        val idToJournal = LinkedHashMap<String, JournalSource>()
-        for (journal in journals) {
-            val id = resolveSourceId(journal)
-            if (id != null) idToJournal[id] = journal
-        }
+        val idToJournal = resolveAll(journals)
         if (idToJournal.isEmpty()) {
             Log.w(TAG, "no OpenAlex source ids resolved")
             return@withContext emptyList()
