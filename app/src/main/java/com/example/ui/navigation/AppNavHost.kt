@@ -216,6 +216,8 @@ fun AppNavHost(
             ) { backStackEntry ->
                 val paperId = backStackEntry.arguments?.getString("paperId") ?: return@composable
                 val viewModel: DetailViewModel = viewModel(factory = DetailViewModelFactory(paperId, repository))
+                // 상세를 열면 읽음 처리 → 카드의 파란 점이 사라진다.
+                LaunchedEffect(paperId) { (repository as? NetworkPaperRepository)?.markRead(paperId) }
                 val uiState by viewModel.uiState.collectAsStateWithLifecycle()
                 DetailScreen(
                     uiState = uiState,

@@ -10,7 +10,6 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 
 /** 알림 탭이 구독하는 알림 설정. */
 data class NotifPrefs(
@@ -18,10 +17,12 @@ data class NotifPrefs(
     val notificationsEnabled: Boolean = true
 )
 
-/** 설정 탭의 "데이터" 섹션용. */
+/** 설정 탭의 "데이터" 섹션과 피드 상단 요약이 같이 구독한다. */
 data class SyncInfo(
     val lastSyncMillis: Long = 0L,
-    val paperCount: Int = 0
+    val paperCount: Int = 0,
+    val isSyncing: Boolean = false,
+    val lastError: String? = null
 )
 
 /** 설정 탭이 구독하는 소스 설정. */
@@ -45,6 +46,8 @@ class NetworkPaperRepository(
     private val notifPrefs = MutableStateFlow(NotifPrefs())
     private val sourcePrefs = MutableStateFlow(SourcePrefs())
     private val lastSync = MutableStateFlow(0L)
+    private val syncing = MutableStateFlow(false)
+    private val lastError = MutableStateFlow<String?>(null)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val refreshLock = Mutex()
 
@@ -63,7 +66,7 @@ class NetworkPaperRepository(
     init {
         scope.launch {
             restore()
-            refresh()
+            refreshIfStale()
         }
     }
 
@@ -81,6 +84,19 @@ class NetworkPaperRepository(
         sourcePrefs.value = SourcePrefs(saved.disabledJournals, saved.arxivEnabled)
         OpenAlexSource.preload(saved.sourceIds)
         Log.i(TAG, "restored " + saved.papers.size + " papers from disk")
+    }
+
+    /**
+     * 앱을 켤 때마다 전 소스를 다시 긁으면 OpenAlex·arXiv 429가 잦다.
+     * 최근에 동기화했으면 디스크 내용을 그대로 쓰고, 사용자가 원하면 새로고침 버튼으로 강제한다.
+     */
+    private suspend fun refreshIfStale() {
+        val age = System.currentTimeMillis() - lastSyncMillis
+        if (lastSyncMillis != 0L && age < STALE_MILLIS) {
+            Log.i(TAG, "last sync " + (age / 60_000L) + "m ago - skipping startup refresh")
+            return
+        }
+        refresh()
     }
 
     override fun getPapers(): Flow<List<Paper>> =
@@ -101,6 +117,17 @@ class NetworkPaperRepository(
         persist()
     }
 
+    /** 상세 화면을 열면 읽음 처리. 카드의 파란 점이 사라진다. */
+    suspend fun markRead(id: String) {
+        val current = papers.value
+        val index = current.indexOfFirst { it.id == id }
+        if (index < 0 || current[index].isRead) return
+        val next = current.toMutableList()
+        next[index] = current[index].copy(isRead = true)
+        papers.value = next
+        persist()
+    }
+
     /** 설정 화면의 관심 분야·알림 스위치를 저장소에 반영한다. */
     suspend fun updateNotificationPrefs(fields: Set<Field>, enabled: Boolean) {
         if (fields == enabledFields && enabled == notificationsEnabled) return
@@ -115,7 +142,9 @@ class NetworkPaperRepository(
     fun sourcePrefs(): Flow<SourcePrefs> = sourcePrefs
 
     fun syncInfo(): Flow<SyncInfo> =
-        combine(lastSync, papers) { at, list -> SyncInfo(at, list.size) }
+        combine(lastSync, papers, syncing, lastError) { at, list, busy, error ->
+            SyncInfo(at, list.size, busy, error)
+        }
 
     suspend fun updateSourcePrefs(disabledJournals: Set<String>, arxivEnabled: Boolean) {
         val next = SourcePrefs(disabledJournals, arxivEnabled)
@@ -169,7 +198,13 @@ class NetworkPaperRepository(
         persist()
     }
 
-    override suspend fun refresh(): Result<Int> = refreshLock.withLock {
+    override suspend fun refresh(): Result<Int> {
+        // 이미 도는 동기화가 있으면 한 번 더 긁지 않고 그 결과를 같이 쓴다.
+        if (!refreshLock.tryLock()) {
+            Log.i(TAG, "refresh already running - skipped")
+            return Result.success(0)
+        }
+        syncing.value = true
         try {
             val now = System.currentTimeMillis()
             // 첫 동기화는 최근 3주치를 긁고, 이후에는 3일 마진만 다시 본다.
@@ -188,12 +223,13 @@ class NetworkPaperRepository(
                 fetched = collected
             }
 
-            // 프리프린트: arXiv(설정으로 on/off) + ChemRxiv
+            // 프리프린트: arXiv(설정으로 on/off) + bioRxiv
             if (sourcePrefs.value.arxivEnabled) fetched = fetched + ArxivSource.fetchRecent()
             fetched = fetched + BioRxivSource.fetchRecent(isoDay(now - 2 * DAY_MILLIS), isoDay(now))
 
             if (fetched.isEmpty()) {
-                return@withLock Result.failure(IllegalStateException("수집된 논문이 없습니다"))
+                lastError.value = "어느 소스에서도 논문을 받지 못했습니다. 네트워크를 확인해 주세요."
+                return Result.failure(IllegalStateException("수집된 논문이 없습니다"))
             }
 
             // 초록 보강: Crossref → Semantic Scholar 순. IEEE 결손이 주 대상.
@@ -217,12 +253,29 @@ class NetworkPaperRepository(
             papers.value = GeminiTranslator.translate(ordered)
             lastSyncMillis = now
             lastSync.value = now
+            lastError.value = null
             persist()
             Log.i(TAG, "refresh done: +" + added + " new, " + merged.size + " total")
-            Result.success(added)
+            return Result.success(added)
         } catch (e: Exception) {
             Log.w(TAG, "refresh failed: " + e.message)
-            Result.failure(e)
+            lastError.value = describe(e)
+            return Result.failure(e)
+        } finally {
+            syncing.value = false
+            refreshLock.unlock()
+        }
+    }
+
+    /** 사용자에게 보여줄 한 줄짜리 실패 사유. 스택은 로그에만 남긴다. */
+    private fun describe(e: Exception): String {
+        val message = e.message.orEmpty()
+        return when {
+            e is java.net.UnknownHostException -> "인터넷에 연결되어 있지 않습니다."
+            e is java.net.SocketTimeoutException -> "서버 응답이 늦어 중단했습니다. 잠시 후 다시 시도해 주세요."
+            message.contains("429") -> "요청이 잦아 잠시 제한됐습니다. 몇 분 뒤 다시 시도해 주세요."
+            message.isBlank() -> e.javaClass.simpleName
+            else -> message.take(80)
         }
     }
 
@@ -263,6 +316,7 @@ class NetworkPaperRepository(
 
     private companion object {
         const val DAY_MILLIS = 24L * 60L * 60L * 1000L
+        const val STALE_MILLIS = 15L * 60L * 1000L
         const val ABSTRACT_FETCH_BUDGET = 30
         const val MAX_EVENTS = 100
     }
