@@ -58,8 +58,7 @@ class FeedViewModel(private val repository: PaperRepository) : ViewModel() {
     fun refresh() {
         viewModelScope.launch {
             _isRefreshing.value = true
-            // Fake refresh delay
-            kotlinx.coroutines.delay(1000)
+            repository.refresh()
             _isRefreshing.value = false
         }
     }

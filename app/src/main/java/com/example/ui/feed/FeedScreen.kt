@@ -84,7 +84,8 @@ fun FeedScreen(
             ) {
                 item {
                     FieldChip(
-                        field = Field.OTHER, // We will just use the UI styling for "All" without a real field
+                        field = Field.OTHER,
+                        labelOverride = "전체",
                         selected = uiState.selectedField == null,
                         onClick = {
                             onFilterSelected(null)

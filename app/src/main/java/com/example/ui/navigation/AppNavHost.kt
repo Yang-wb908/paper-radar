@@ -27,7 +27,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.data.FakePaperRepository
+import com.example.data.PaperRepositoryProvider
 import com.example.data.PaperRepository
 import com.example.ui.detail.DetailScreen
 import com.example.ui.detail.DetailViewModel
@@ -61,7 +61,7 @@ val bottomNavItems = listOf(
 @Composable
 fun AppNavHost(
     navController: NavHostController = rememberNavController(),
-    repository: PaperRepository = FakePaperRepository()
+    repository: PaperRepository = PaperRepositoryProvider.instance
 ) {
     Scaffold(
         bottomBar = {

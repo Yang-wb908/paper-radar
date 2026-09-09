@@ -174,7 +174,7 @@ fun JournalBadge(journalName: String) {
 }
 
 @Composable
-fun FieldChip(field: Field, selected: Boolean = false, onClick: (() -> Unit)? = null) {
+fun FieldChip(field: Field, selected: Boolean = false, onClick: (() -> Unit)? = null, labelOverride: String? = null) {
     val fieldColor = getFieldColor(field)
     val containerColor = if (selected) fieldColor.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
     val contentColor = if (selected) fieldColor else MaterialTheme.colorScheme.onSurfaceVariant
@@ -187,7 +187,7 @@ fun FieldChip(field: Field, selected: Boolean = false, onClick: (() -> Unit)? = 
         modifier = if (onClick != null) Modifier.clickable { onClick() } else Modifier
     ) {
         Text(
-            text = field.labelKo,
+            text = labelOverride ?: field.labelKo,
             style = MaterialTheme.typography.labelSmall,
             color = contentColor,
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
