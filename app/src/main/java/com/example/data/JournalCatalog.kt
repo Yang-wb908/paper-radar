@@ -48,7 +48,30 @@ object JournalCatalog {
         JournalSource("Nature Photonics", "1749-4885", ENERGY),
         JournalSource("Joule", "2542-4351", ENERGY),
         JournalSource("Advanced Energy Materials", "1614-6832", ENERGY),
-        JournalSource("Light: Science & Applications", "2047-7538", ENERGY)
+        JournalSource("Light: Science & Applications", "2047-7538", ENERGY),
+
+        JournalSource("ACS Nano", "1936-0851", SEMI),
+        JournalSource("Nano Letters", "1530-6984", SEMI),
+        JournalSource("Small", "1613-6810", SEMI),
+        JournalSource("Nature Reviews Materials", "2058-8437", SEMI),
+        JournalSource("npj 2D Materials and Applications", "2397-7132", SEMI),
+
+        JournalSource("IEEE Transactions on Neural Networks and Learning Systems", "2162-237X", AI),
+        JournalSource("Nature Reviews Electrical Engineering", null, AI),
+
+        JournalSource("IEEE Transactions on Circuits and Systems II: Express Briefs", "1549-7747", COMM),
+        JournalSource("IEEE Transactions on Microwave Theory and Techniques", "0018-9480", COMM),
+        JournalSource("IEEE Wireless Communications Letters", "2162-2337", COMM),
+
+        JournalSource("ACS Energy Letters", "2380-8195", ENERGY),
+        JournalSource("Optica", "2334-2536", ENERGY),
+        JournalSource("Advanced Optical Materials", "2195-1071", ENERGY),
+        JournalSource("Energy & Environmental Science", "1754-5692", ENERGY),
+
+        JournalSource("Physical Review Letters", "0031-9007", GENERAL),
+        JournalSource("Proceedings of the National Academy of Sciences", "0027-8424", GENERAL),
+        JournalSource("Nature Reviews Physics", "2522-5820", GENERAL),
+        JournalSource("Cell Reports Physical Science", "2666-3864", GENERAL)
     )
 
     fun byName(name: String?): JournalSource? {

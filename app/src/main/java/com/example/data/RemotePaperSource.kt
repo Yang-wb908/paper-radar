@@ -72,6 +72,26 @@ internal object Http {
             null
         }
     }
+
+    /** arXiv는 Atom XML이라 원문 텍스트가 필요하다. */
+    fun getText(url: String): String? {
+        return try {
+            val request = Request.Builder()
+                .url(url)
+                .header("User-Agent", USER_AGENT)
+                .build()
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    Log.w(TAG, "HTTP " + response.code + " <- " + url)
+                    return null
+                }
+                response.body?.string()
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "text request failed: " + e.message)
+            null
+        }
+    }
 }
 
 internal fun isoDay(millis: Long): String {

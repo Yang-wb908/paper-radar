@@ -23,6 +23,7 @@ class NetworkPaperRepository(
 
     private val papers = MutableStateFlow<List<Paper>>(emptyList())
     private val bookmarks = MutableStateFlow<Set<String>>(emptySet())
+    private val notifLog = MutableStateFlow<List<NotifEvent>>(emptyList())
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val refreshLock = Mutex()
 
@@ -50,6 +51,7 @@ class NetworkPaperRepository(
         papers.value = saved.papers
         bookmarks.value = saved.bookmarks
         notified = saved.notified
+        notifLog.value = saved.notifLog
         enabledFields = saved.enabledFields.ifEmpty { enabledFields }
         notificationsEnabled = saved.notificationsEnabled
         lastSyncMillis = saved.lastSyncMillis
@@ -93,8 +95,38 @@ class NetworkPaperRepository(
         }
         if (fresh.isEmpty()) return emptyList()
         notified = notified + fresh.map { it.id }
+        val picked = fresh.sortedByDescending { it.publishedDate }
+        val event = NotifEvent(
+            id = "n" + System.currentTimeMillis(),
+            timestamp = System.currentTimeMillis(),
+            paperIds = picked.take(20).map { it.id },
+            fields = picked.flatMap { it.fields }.filter { it != Field.OTHER }.toSet()
+        )
+        notifLog.value = (notifLog.value + event).takeLast(MAX_EVENTS)
         persist()
-        return fresh.sortedByDescending { it.publishedDate }
+        return picked
+    }
+
+    /** 알림 탭용: 발송 기록과 그때 걸린 논문을 묶어 최신순으로 돌려준다. */
+    fun getNotificationGroups(): Flow<List<NotifGroup>> =
+        combine(notifLog, papers, bookmarks) { events, list, marked ->
+            val byId = list.associateBy { it.id }
+            events.sortedByDescending { it.timestamp }.map { event ->
+                NotifGroup(
+                    event = event,
+                    papers = event.paperIds.mapNotNull { byId[it] }
+                        .map { it.copy(isBookmarked = marked.contains(it.id)) }
+                )
+            }
+        }
+
+    fun unreadNotificationCount(): Flow<Int> =
+        notifLog.map { list -> list.count { !it.isRead } }
+
+    suspend fun markNotificationsRead() {
+        if (notifLog.value.none { !it.isRead }) return
+        notifLog.value = notifLog.value.map { it.copy(isRead = true) }
+        persist()
     }
 
     override suspend fun refresh(): Result<Int> = refreshLock.withLock {
@@ -114,6 +146,9 @@ class NetworkPaperRepository(
                 }
                 fetched = collected
             }
+
+            // arXiv 프리프린트는 저널과 별개 축이라 항상 함께 받는다.
+            fetched = fetched + ArxivSource.fetchRecent()
 
             if (fetched.isEmpty()) {
                 return@withLock Result.failure(IllegalStateException("수집된 논문이 없습니다"))
@@ -173,7 +208,8 @@ class NetworkPaperRepository(
                 notified = notified,
                 enabledFields = enabledFields,
                 notificationsEnabled = notificationsEnabled,
-                lastSyncMillis = lastSyncMillis
+                lastSyncMillis = lastSyncMillis,
+                notifLog = notifLog.value
             )
         )
     }
@@ -181,5 +217,6 @@ class NetworkPaperRepository(
     private companion object {
         const val DAY_MILLIS = 24L * 60L * 60L * 1000L
         const val ABSTRACT_FETCH_BUDGET = 30
+        const val MAX_EVENTS = 100
     }
 }

@@ -4,9 +4,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
@@ -44,13 +47,18 @@ import com.example.ui.library.LibraryViewModel
 import com.example.ui.library.LibraryViewModelFactory
 import com.example.ui.search.SearchScreen
 import com.example.ui.search.SearchViewModel
+import com.example.ui.notifications.NotificationsScreen
+import com.example.ui.notifications.NotificationsViewModel
+import com.example.ui.notifications.NotificationsViewModelFactory
 import com.example.ui.search.SearchViewModelFactory
+import kotlinx.coroutines.flow.flowOf
 import com.example.ui.settings.SettingsScreen
 import com.example.ui.settings.SettingsViewModel
 
 sealed class Screen(val route: String, val title: String, val icon: ImageVector) {
     object Feed : Screen("feed", "피드", Icons.Filled.List)
     object Search : Screen("search", "검색", Icons.Filled.Search)
+    object Notifications : Screen("notifications", "알림", Icons.Filled.Notifications)
     object Library : Screen("library", "보관함", Icons.Filled.Bookmark)
     object Settings : Screen("settings", "설정", Icons.Filled.Settings)
 }
@@ -58,6 +66,7 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector)
 val bottomNavItems = listOf(
     Screen.Feed,
     Screen.Search,
+    Screen.Notifications,
     Screen.Library,
     Screen.Settings
 )
@@ -67,6 +76,10 @@ fun AppNavHost(
     navController: NavHostController = rememberNavController(),
     repository: PaperRepository = AppGraph.repository(LocalContext.current)
 ) {
+    val paperRepository = repository as? NetworkPaperRepository
+    val unreadCount by (paperRepository?.unreadNotificationCount() ?: flowOf(0))
+        .collectAsStateWithLifecycle(initialValue = 0)
+
     Scaffold(
         bottomBar = {
             val navBackStackEntry by navController.currentBackStackEntryAsState()
@@ -77,7 +90,15 @@ fun AppNavHost(
                 NavigationBar {
                     bottomNavItems.forEach { screen ->
                         NavigationBarItem(
-                            icon = { Icon(screen.icon, contentDescription = screen.title) },
+                            icon = {
+                                if (screen == Screen.Notifications && unreadCount > 0) {
+                                    BadgedBox(badge = { Badge { Text(unreadCount.toString()) } }) {
+                                        Icon(screen.icon, contentDescription = screen.title)
+                                    }
+                                } else {
+                                    Icon(screen.icon, contentDescription = screen.title)
+                                }
+                            },
                             label = { Text(screen.title) },
                             selected = currentDestination?.hierarchy?.any { it.route == screen.route } == true,
                             onClick = {
@@ -120,6 +141,18 @@ fun AppNavHost(
                     onQueryChange = viewModel::onQueryChange,
                     onSearch = viewModel::onSearch,
                     onToggleField = viewModel::toggleField,
+                    onToggleBookmark = viewModel::toggleBookmark,
+                    onNavigateToDetail = { paperId -> navController.navigate("detail/$paperId") }
+                )
+            }
+            composable(Screen.Notifications.route) {
+                val context = LocalContext.current
+                val concrete = AppGraph.repository(context)
+                val viewModel: NotificationsViewModel =
+                    viewModel(factory = NotificationsViewModelFactory(concrete))
+                val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+                NotificationsScreen(
+                    uiState = uiState,
                     onToggleBookmark = viewModel::toggleBookmark,
                     onNavigateToDetail = { paperId -> navController.navigate("detail/$paperId") }
                 )

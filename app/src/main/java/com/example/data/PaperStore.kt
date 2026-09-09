@@ -18,7 +18,23 @@ data class StoredState(
     val notified: Set<String> = emptySet(),
     val enabledFields: Set<Field> = setOf(Field.SEMI, Field.AI, Field.COMM, Field.ENERGY),
     val notificationsEnabled: Boolean = true,
-    val lastSyncMillis: Long = 0L
+    val lastSyncMillis: Long = 0L,
+    val notifLog: List<NotifEvent> = emptyList()
+)
+
+/** 알림 탭에 쌓이는 발송 기록 한 건. */
+data class NotifEvent(
+    val id: String,
+    val timestamp: Long,
+    val paperIds: List<String>,
+    val fields: Set<Field>,
+    val isRead: Boolean = false
+)
+
+/** 알림 한 건과 그때 걸린 논문들 (화면 표시용). */
+data class NotifGroup(
+    val event: NotifEvent,
+    val papers: List<Paper>
 )
 
 class PaperStore(context: Context) {
@@ -35,7 +51,8 @@ class PaperStore(context: Context) {
                 notified = parseStrings(root.optJSONArray("notified")),
                 enabledFields = parseFields(root.optJSONArray("enabledFields")),
                 notificationsEnabled = root.optBoolean("notificationsEnabled", true),
-                lastSyncMillis = root.optLong("lastSyncMillis", 0L)
+                lastSyncMillis = root.optLong("lastSyncMillis", 0L),
+                notifLog = parseNotifLog(root.optJSONArray("notifLog"))
             )
         } catch (e: Exception) {
             Log.w(TAG, "store load failed: " + e.message)
@@ -58,6 +75,18 @@ class PaperStore(context: Context) {
             root.put("enabledFields", JSONArray(state.enabledFields.map { it.name }))
             root.put("notificationsEnabled", state.notificationsEnabled)
             root.put("lastSyncMillis", state.lastSyncMillis)
+            val notifLog = JSONArray()
+            for (event in state.notifLog.takeLast(MAX_NOTIF_EVENTS)) {
+                notifLog.put(
+                    JSONObject()
+                        .put("id", event.id)
+                        .put("timestamp", event.timestamp)
+                        .put("paperIds", JSONArray(event.paperIds))
+                        .put("fields", JSONArray(event.fields.map { it.name }))
+                        .put("isRead", event.isRead)
+                )
+            }
+            root.put("notifLog", notifLog)
             file.writeText(root.toString())
         } catch (e: Exception) {
             Log.w(TAG, "store save failed: " + e.message)
@@ -104,6 +133,25 @@ class PaperStore(context: Context) {
         return out
     }
 
+    private fun parseNotifLog(array: JSONArray?): List<NotifEvent> {
+        if (array == null) return emptyList()
+        val out = ArrayList<NotifEvent>(array.length())
+        for (i in 0 until array.length()) {
+            val o = array.optJSONObject(i) ?: continue
+            val id = o.optString("id").takeIf { it.isNotBlank() } ?: continue
+            out.add(
+                NotifEvent(
+                    id = id,
+                    timestamp = o.optLong("timestamp", 0L),
+                    paperIds = parseStrings(o.optJSONArray("paperIds")).toList(),
+                    fields = parseFields(o.optJSONArray("fields")),
+                    isRead = o.optBoolean("isRead", false)
+                )
+            )
+        }
+        return out
+    }
+
     private fun parseStrings(array: JSONArray?): Set<String> {
         if (array == null) return emptySet()
         val out = LinkedHashSet<String>()
@@ -128,6 +176,7 @@ class PaperStore(context: Context) {
     private companion object {
         const val MAX_PAPERS = 3000
         const val MAX_NOTIFIED = 4000
+        const val MAX_NOTIF_EVENTS = 100
     }
 }
 
