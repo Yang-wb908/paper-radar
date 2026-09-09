@@ -1,0 +1,6 @@
+{
+  "name": "Paper Radar",
+  "description": "SCI급 저널의 최신 논문을 뉴스 피드처럼 훑어보는 개인용 리더 앱",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
