@@ -3,8 +3,10 @@ package com.example.data
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URLEncoder
@@ -24,7 +26,7 @@ internal object Http {
 
     private val client: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(60, TimeUnit.SECONDS)
         .build()
 
     fun getJson(url: String): JSONObject? {
@@ -44,6 +46,29 @@ internal object Http {
             }
         } catch (e: Exception) {
             Log.w(TAG, "request failed: " + e.message)
+            null
+        }
+    }
+
+    fun postJson(url: String, payload: JSONObject): JSONObject? {
+        return try {
+            val media = "application/json; charset=utf-8".toMediaType()
+            val request = Request.Builder()
+                .url(url)
+                .post(payload.toString().toRequestBody(media))
+                .header("User-Agent", USER_AGENT)
+                .build()
+            client.newCall(request).execute().use { response ->
+                val body = response.body?.string()
+                if (!response.isSuccessful) {
+                    Log.w(TAG, "HTTP " + response.code + " <- " + url.substringBefore("?key="))
+                    return null
+                }
+                if (body == null) return null
+                JSONObject(body)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "post failed: " + e.message)
             null
         }
     }

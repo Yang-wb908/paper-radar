@@ -27,7 +27,11 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.data.PaperRepositoryProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.platform.LocalContext
+import com.example.data.AppGraph
+import com.example.data.Field
+import com.example.data.NetworkPaperRepository
 import com.example.data.PaperRepository
 import com.example.ui.detail.DetailScreen
 import com.example.ui.detail.DetailViewModel
@@ -61,7 +65,7 @@ val bottomNavItems = listOf(
 @Composable
 fun AppNavHost(
     navController: NavHostController = rememberNavController(),
-    repository: PaperRepository = PaperRepositoryProvider.instance
+    repository: PaperRepository = AppGraph.repository(LocalContext.current)
 ) {
     Scaffold(
         bottomBar = {
@@ -132,6 +136,14 @@ fun AppNavHost(
             composable(Screen.Settings.route) {
                 val viewModel: SettingsViewModel = viewModel()
                 val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+                // 설정의 관심 분야·알림 스위치를 백그라운드 워커가 보는 저장소에 반영한다.
+                LaunchedEffect(uiState.fields, uiState.notificationsEnabled) {
+                    val selected = uiState.fields.filterValues { it }.keys
+                        .mapNotNull { Field.fromLabel(it) }
+                        .toSet()
+                    (repository as? NetworkPaperRepository)
+                        ?.updateNotificationPrefs(selected, uiState.notificationsEnabled)
+                }
                 SettingsScreen(
                     uiState = uiState,
                     onToggleField = viewModel::toggleField,

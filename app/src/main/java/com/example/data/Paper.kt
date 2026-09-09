@@ -5,18 +5,42 @@ enum class Field(val labelKo: String) {
     AI("AI·머신러닝·컴퓨팅"),
     COMM("통신·신호처리·회로"),
     ENERGY("에너지·배터리·광학"),
-    OTHER("기타")
+    OTHER("기타");
+
+    companion object {
+        fun fromLabel(label: String): Field? = values().firstOrNull { it.labelKo == label }
+    }
 }
 
 data class Paper(
     val id: String,              // DOI
-    val title: String,
+    val title: String,           // 원제(영문)
     val authorsLine: String,     // "J. Kim 외 7인"
     val journal: String,         // "Nature Materials"
     val publishedDate: Long,     // epoch millis
-    val abstractText: String?,   // null 가능
+    val abstractText: String?,   // 원문 초록, null 가능
     val url: String,             // https://doi.org/...
     val fields: Set<Field>,
     val isBookmarked: Boolean,
-    val isRead: Boolean
-)
+    val isRead: Boolean,
+    val titleKo: String? = null,     // Gemini 번역 제목
+    val abstractKo: String? = null   // Gemini 번역 초록
+) {
+    /** 카드에서 크게 읽히는 제목. 번역이 있으면 한국어를 앞세운다. */
+    val displayTitle: String
+        get() = titleKo ?: title
+
+    /** 번역이 있을 때만 원제를 보조 줄로 노출한다. */
+    val originalTitleOrNull: String?
+        get() = if (titleKo != null) title else null
+
+    val displayAbstract: String?
+        get() = abstractKo ?: abstractText
+
+    val isTranslated: Boolean
+        get() = titleKo != null
+
+    /** 번역 대상인지. 초록이 없어도 제목은 번역한다. */
+    val needsTranslation: Boolean
+        get() = titleKo == null || (abstractText != null && abstractKo == null)
+}

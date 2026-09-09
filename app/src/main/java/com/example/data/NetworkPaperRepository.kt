@@ -12,18 +12,12 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-/** 앱 전역에서 하나의 저장소 인스턴스를 공유한다(화면 전환마다 재수집 방지). */
-object PaperRepositoryProvider {
-    val instance: PaperRepository by lazy { NetworkPaperRepository() }
-}
-
 /**
- * OpenAlex를 1차, Crossref를 2차로 쓰는 실제 수집 저장소.
- *
- * 아직 영속화(Room)는 붙이지 않았다. 프로세스가 살아 있는 동안만 누적하고,
- * 다음 단계에서 Room + WorkManager로 옮긴다.
+ * OpenAlex를 1차, Crossref를 2차로 쓰는 수집 저장소.
+ * 결과는 PaperStore(JSON)로 영속화해서 앱을 껐다 켜도, 백그라운드 워커가 돌아도 이어진다.
  */
 class NetworkPaperRepository(
+    private val store: PaperStore? = null,
     private val journals: List<JournalSource> = JournalCatalog.ALL
 ) : PaperRepository {
 
@@ -33,10 +27,33 @@ class NetworkPaperRepository(
     private val refreshLock = Mutex()
 
     @Volatile
+    private var notified: Set<String> = emptySet()
+
+    @Volatile
+    private var enabledFields: Set<Field> = setOf(Field.SEMI, Field.AI, Field.COMM, Field.ENERGY)
+
+    @Volatile
+    private var notificationsEnabled: Boolean = true
+
+    @Volatile
     private var lastSyncMillis: Long = 0L
 
     init {
-        scope.launch { refresh() }
+        scope.launch {
+            restore()
+            refresh()
+        }
+    }
+
+    private suspend fun restore() {
+        val saved = store?.load() ?: return
+        papers.value = saved.papers
+        bookmarks.value = saved.bookmarks
+        notified = saved.notified
+        enabledFields = saved.enabledFields.ifEmpty { enabledFields }
+        notificationsEnabled = saved.notificationsEnabled
+        lastSyncMillis = saved.lastSyncMillis
+        Log.i(TAG, "restored " + saved.papers.size + " papers from disk")
     }
 
     override fun getPapers(): Flow<List<Paper>> =
@@ -54,6 +71,30 @@ class NetworkPaperRepository(
     override suspend fun toggleBookmark(id: String) {
         val current = bookmarks.value
         bookmarks.value = if (current.contains(id)) current - id else current + id
+        persist()
+    }
+
+    /** 설정 화면의 관심 분야·알림 스위치를 저장소에 반영한다. */
+    suspend fun updateNotificationPrefs(fields: Set<Field>, enabled: Boolean) {
+        if (fields == enabledFields && enabled == notificationsEnabled) return
+        enabledFields = fields
+        notificationsEnabled = enabled
+        persist()
+    }
+
+    /**
+     * 아직 알리지 않은, 관심 분야에 걸리는 논문을 돌려주고 알림 완료로 표시한다.
+     * 워커가 한 번 소비하면 같은 논문으로 다시 알리지 않는다.
+     */
+    suspend fun consumeUnnotified(): List<Paper> {
+        if (!notificationsEnabled) return emptyList()
+        val fresh = papers.value.filter { paper ->
+            !notified.contains(paper.id) && paper.fields.any { enabledFields.contains(it) }
+        }
+        if (fresh.isEmpty()) return emptyList()
+        notified = notified + fresh.map { it.id }
+        persist()
+        return fresh.sortedByDescending { it.publishedDate }
     }
 
     override suspend fun refresh(): Result<Int> = refreshLock.withLock {
@@ -93,8 +134,11 @@ class NetworkPaperRepository(
                 }
             }
 
-            papers.value = merged.values.sortedByDescending { it.publishedDate }
+            // 번역은 최신 논문부터. 논문당 한 번만 돌고 결과는 디스크에 남는다.
+            val ordered = merged.values.sortedByDescending { it.publishedDate }
+            papers.value = GeminiTranslator.translate(ordered)
             lastSyncMillis = now
+            persist()
             Log.i(TAG, "refresh done: +" + added + " new, " + merged.size + " total")
             Result.success(added)
         } catch (e: Exception) {
@@ -120,8 +164,22 @@ class NetworkPaperRepository(
         }
     }
 
+    private suspend fun persist() {
+        val target = store ?: return
+        target.save(
+            StoredState(
+                papers = papers.value,
+                bookmarks = bookmarks.value,
+                notified = notified,
+                enabledFields = enabledFields,
+                notificationsEnabled = notificationsEnabled,
+                lastSyncMillis = lastSyncMillis
+            )
+        )
+    }
+
     private companion object {
         const val DAY_MILLIS = 24L * 60L * 60L * 1000L
-        const val ABSTRACT_FETCH_BUDGET = 20
+        const val ABSTRACT_FETCH_BUDGET = 30
     }
 }

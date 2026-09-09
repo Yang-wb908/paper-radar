@@ -18,6 +18,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.data.Field
 import com.example.data.Paper
 import com.example.ui.theme.*
@@ -95,20 +96,34 @@ fun PaperCard(
                                 .background(MaterialTheme.colorScheme.primary)
                         )
                     }
-                    Text(
-                        text = paper.title,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 3,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    Column {
+                        Text(
+                            text = paper.displayTitle,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            lineHeight = 24.sp,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 3,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        paper.originalTitleOrNull?.let { original ->
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = original,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
                 }
 
-                Spacer(modifier = Modifier.height(6.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
                 // Abstract Text
-                if (paper.abstractText.isNullOrEmpty()) {
+                val abstractBody = paper.displayAbstract
+                if (abstractBody.isNullOrEmpty()) {
                     Text(
                         text = "초록 미제공 - 원문에서 확인",
                         style = MaterialTheme.typography.bodyMedium,
@@ -116,10 +131,11 @@ fun PaperCard(
                     )
                 } else {
                     Text(
-                        text = paper.abstractText,
+                        text = abstractBody,
                         style = MaterialTheme.typography.bodyMedium,
+                        lineHeight = 20.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 2,
+                        maxLines = 3,
                         overflow = TextOverflow.Ellipsis
                     )
                 }

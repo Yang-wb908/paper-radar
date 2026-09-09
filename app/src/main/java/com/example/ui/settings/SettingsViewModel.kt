@@ -22,7 +22,7 @@ data class SettingsUiState(
         "IEEE Transactions on Communications", "IEEE Transactions on Signal Processing",
         "IEEE Transactions on Pattern Analysis and Machine Intelligence", "Joule", "Light: Science & Applications"
     ).associateWith { true },
-    val notificationsEnabled: Boolean = false,
+    val notificationsEnabled: Boolean = true,
     val syncPeriod: String = "1시간",
     val quietTimeStart: String = "23:00",
     val quietTimeEnd: String = "08:00",

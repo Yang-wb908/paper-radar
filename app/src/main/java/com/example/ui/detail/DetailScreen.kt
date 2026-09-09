@@ -68,7 +68,7 @@ fun DetailScreen(
             ) {
                 // Title
                 Text(
-                    text = paper.title,
+                    text = paper.displayTitle,
                     style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onBackground
@@ -119,17 +119,18 @@ fun DetailScreen(
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 
-                if (paper.abstractText.isNullOrEmpty()) {
+                val abstractBody = paper.displayAbstract
+                if (abstractBody.isNullOrEmpty()) {
                     Text(
                         text = "초록 미제공 - 원문에서 확인",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                     )
                 } else {
-                    val displayAbstract = if (paper.abstractText.length > 400) {
-                        paper.abstractText.take(400) + "…"
+                    val displayAbstract = if (abstractBody.length > 400) {
+                        abstractBody.take(400) + "…"
                     } else {
-                        paper.abstractText
+                        abstractBody
                     }
                     Text(
                         text = displayAbstract,
