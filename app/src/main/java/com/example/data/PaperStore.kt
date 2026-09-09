@@ -22,6 +22,7 @@ data class StoredState(
     val notifLog: List<NotifEvent> = emptyList(),
     val disabledJournals: Set<String> = emptySet(),
     val arxivEnabled: Boolean = true,
+    val syncPeriodMinutes: Int = DEFAULT_SYNC_PERIOD_MINUTES,
     val sourceIds: Map<String, String> = emptyMap()
 )
 
@@ -58,6 +59,7 @@ class PaperStore(context: Context) {
                 notifLog = parseNotifLog(root.optJSONArray("notifLog")),
                 disabledJournals = parseStrings(root.optJSONArray("disabledJournals")),
                 arxivEnabled = root.optBoolean("arxivEnabled", true),
+                syncPeriodMinutes = root.optInt("syncPeriodMinutes", DEFAULT_SYNC_PERIOD_MINUTES),
                 sourceIds = parseStringMap(root.optJSONObject("sourceIds"))
             )
         } catch (e: Exception) {
@@ -95,6 +97,7 @@ class PaperStore(context: Context) {
             root.put("notifLog", notifLog)
             root.put("disabledJournals", JSONArray(state.disabledJournals.toList()))
             root.put("arxivEnabled", state.arxivEnabled)
+            root.put("syncPeriodMinutes", state.syncPeriodMinutes)
             root.put("sourceIds", JSONObject(state.sourceIds))
             file.writeText(root.toString())
         } catch (e: Exception) {

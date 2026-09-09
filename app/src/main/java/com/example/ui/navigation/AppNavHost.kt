@@ -56,6 +56,8 @@ import com.example.ui.search.SearchViewModelFactory
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import com.example.ui.settings.ARXIV_SOURCE_LABEL
+import com.example.ui.settings.syncPeriodMinutes
+import com.example.data.PaperRadarWork
 import com.example.ui.settings.SettingsScreen
 import com.example.ui.settings.SettingsViewModel
 
@@ -177,12 +179,13 @@ fun AppNavHost(
             }
             composable(Screen.Settings.route) {
                 val viewModel: SettingsViewModel = viewModel()
+                val context = LocalContext.current
                 val uiState by viewModel.uiState.collectAsStateWithLifecycle()
                 val concrete = repository as? NetworkPaperRepository
                 // 저장돼 있던 소스 설정을 먼저 불러오고, 그 뒤의 토글만 저장소에 반영한다.
                 LaunchedEffect(concrete) {
                     val saved = concrete?.sourcePrefs()?.first() ?: return@LaunchedEffect
-                    viewModel.applySourcePrefs(saved.disabledJournals, saved.arxivEnabled)
+                    viewModel.applySourcePrefs(saved.disabledJournals, saved.arxivEnabled, saved.syncPeriodMinutes)
                 }
                 val syncScope = rememberCoroutineScope()
                 LaunchedEffect(concrete) {
@@ -190,13 +193,19 @@ fun AppNavHost(
                         viewModel.applySyncInfo(info.lastSyncMillis, info.paperCount)
                     }
                 }
-                LaunchedEffect(uiState.journals, uiState.sourcePrefsLoaded) {
+                LaunchedEffect(uiState.journals, uiState.syncPeriod, uiState.sourcePrefsLoaded) {
                     if (!uiState.sourcePrefsLoaded) return@LaunchedEffect
                     val disabled = uiState.journals.filterValues { !it }.keys
                         .filter { it != ARXIV_SOURCE_LABEL }
                         .toSet()
                     val arxiv = uiState.journals[ARXIV_SOURCE_LABEL] ?: true
-                    concrete?.updateSourcePrefs(disabled, arxiv)
+                    val minutes = syncPeriodMinutes(uiState.syncPeriod)
+                    val before = concrete?.sourcePrefs()?.first()
+                    // 주기가 바뀌었을 때만 WorkManager 스케줄을 갱신한다(UPDATE 정책 → 다음 실행 시각 유지).
+                    if (before != null && before.syncPeriodMinutes != minutes) {
+                        PaperRadarWork.schedule(context, minutes, replace = true)
+                    }
+                    concrete?.updateSourcePrefs(disabled, arxiv, minutes)
                 }
                 SettingsScreen(
                     uiState = uiState,

@@ -148,22 +148,22 @@ object PaperRadarWork {
 
     private const val UNIQUE_NAME = "paper-radar-sync"
 
-    fun schedule(context: Context) {
+    fun schedule(context: Context, periodMinutes: Int = DEFAULT_SYNC_PERIOD_MINUTES, replace: Boolean = false) {
         Notifications.ensureChannel(context)
 
         val constraints = Constraints.Builder()
             .setRequiredNetworkType(NetworkType.CONNECTED)
             .build()
 
-        val request = PeriodicWorkRequestBuilder<SyncWorker>(1, TimeUnit.HOURS)
+        val request = PeriodicWorkRequestBuilder<SyncWorker>(periodMinutes.coerceAtLeast(15).toLong(), TimeUnit.MINUTES)
             .setConstraints(constraints)
             .build()
 
         WorkManager.getInstance(context).enqueueUniquePeriodicWork(
             UNIQUE_NAME,
-            ExistingPeriodicWorkPolicy.KEEP,
+            if (replace) ExistingPeriodicWorkPolicy.UPDATE else ExistingPeriodicWorkPolicy.KEEP,
             request
         )
-        Log.i(TAG, "background sync scheduled (1h)")
+        Log.i(TAG, "background sync scheduled (" + periodMinutes + "m, replace=" + replace + ")")
     }
 }

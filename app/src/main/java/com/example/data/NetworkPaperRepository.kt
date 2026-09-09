@@ -28,12 +28,17 @@ data class SyncInfo(
 /** 설정 탭이 구독하는 소스 설정. */
 data class SourcePrefs(
     val disabledJournals: Set<String> = emptySet(),
-    val arxivEnabled: Boolean = true
+    /** 프리프린트(arXiv·bioRxiv) 수집·표시 여부. 홈 칩과 설정 토글이 같은 값을 본다. */
+    val arxivEnabled: Boolean = true,
+    /** 백그라운드 동기화 주기(분). WorkManager 최소 15분. */
+    val syncPeriodMinutes: Int = DEFAULT_SYNC_PERIOD_MINUTES
 )
+
+const val DEFAULT_SYNC_PERIOD_MINUTES = 60
 
 /**
  * OpenAlex를 1차, Crossref를 2차로 쓰는 수집 저장소.
- * 결과는 PaperStore(JSON)로 영속화해서 앱을 껐다 켜도, 백그라운드 워커가 돌아도 이어진다.
+ * 결과는 PaperStore(JSON)로 영솝화해서 앱을 껐다 켜도, 백그라운드 워커가 돌아도 이어진다.
  */
 class NetworkPaperRepository(
     private val store: PaperStore? = null,
@@ -64,9 +69,10 @@ class NetworkPaperRepository(
     private var lastSyncMillis: Long = 0L
 
     init {
+        // 앱을 켤 때마다 한 번 긁는다. 주기 동기화는 SyncWorker가 따로 돈다.
         scope.launch {
             restore()
-            refreshIfStale()
+            refresh()
         }
     }
 
@@ -81,28 +87,19 @@ class NetworkPaperRepository(
         lastSyncMillis = saved.lastSyncMillis
         lastSync.value = saved.lastSyncMillis
         notifPrefs.value = NotifPrefs(enabledFields, notificationsEnabled)
-        sourcePrefs.value = SourcePrefs(saved.disabledJournals, saved.arxivEnabled)
+        sourcePrefs.value = SourcePrefs(saved.disabledJournals, saved.arxivEnabled, saved.syncPeriodMinutes)
         OpenAlexSource.preload(saved.sourceIds)
         Log.i(TAG, "restored " + saved.papers.size + " papers from disk")
     }
 
-    /**
-     * 앱을 켤 때마다 전 소스를 다시 긁으면 OpenAlex·arXiv 429가 잦다.
-     * 최근에 동기화했으면 디스크 내용을 그대로 쓰고, 사용자가 원하면 새로고침 버튼으로 강제한다.
-     */
-    private suspend fun refreshIfStale() {
-        val age = System.currentTimeMillis() - lastSyncMillis
-        if (lastSyncMillis != 0L && age < STALE_MILLIS) {
-            Log.i(TAG, "last sync " + (age / 60_000L) + "m ago - skipping startup refresh")
-            return
-        }
-        refresh()
-    }
-
+    /** 프리프린트를 꺼 두면 이미 저장된 arXiv·bioRxiv 논문도 화면에서 빠진다(북마크는 예외). */
     override fun getPapers(): Flow<List<Paper>> =
-        combine(papers, bookmarks) { list, marked ->
-            list.map { it.copy(isBookmarked = marked.contains(it.id)) }
+        combine(papers, bookmarks, sourcePrefs) { list, marked, prefs ->
+            list.asSequence()
+                .filter { prefs.arxivEnabled || !it.isPreprint || marked.contains(it.id) }
+                .map { it.copy(isBookmarked = marked.contains(it.id)) }
                 .sortedByDescending { it.publishedDate }
+                .toList()
         }
 
     override fun getBookmarkedPapers(): Flow<List<Paper>> =
@@ -146,11 +143,21 @@ class NetworkPaperRepository(
             SyncInfo(at, list.size, busy, error)
         }
 
-    suspend fun updateSourcePrefs(disabledJournals: Set<String>, arxivEnabled: Boolean) {
-        val next = SourcePrefs(disabledJournals, arxivEnabled)
+    suspend fun updateSourcePrefs(
+        disabledJournals: Set<String>,
+        arxivEnabled: Boolean,
+        syncPeriodMinutes: Int = sourcePrefs.value.syncPeriodMinutes
+    ) {
+        val next = SourcePrefs(disabledJournals, arxivEnabled, syncPeriodMinutes)
         if (next == sourcePrefs.value) return
         sourcePrefs.value = next
         persist()
+    }
+
+    /** 홈의 "프리프린트 포함/제외" 칩. 끄면 다음 동기화부터 arXiv·bioRxiv를 아예 받지 않는다. */
+    suspend fun setPreprintsEnabled(enabled: Boolean) {
+        val current = sourcePrefs.value
+        updateSourcePrefs(current.disabledJournals, enabled, current.syncPeriodMinutes)
     }
 
     /**
@@ -159,8 +166,11 @@ class NetworkPaperRepository(
      */
     suspend fun consumeUnnotified(): List<Paper> {
         if (!notificationsEnabled) return emptyList()
+        val preprintsOn = sourcePrefs.value.arxivEnabled
         val fresh = papers.value.filter { paper ->
-            !notified.contains(paper.id) && paper.fields.any { enabledFields.contains(it) }
+            !notified.contains(paper.id) &&
+                (preprintsOn || !paper.isPreprint) &&
+                paper.fields.any { enabledFields.contains(it) }
         }
         if (fresh.isEmpty()) return emptyList()
         notified = notified + fresh.map { it.id }
@@ -223,9 +233,13 @@ class NetworkPaperRepository(
                 fetched = collected
             }
 
-            // 프리프린트: arXiv(설정으로 on/off) + bioRxiv
-            if (sourcePrefs.value.arxivEnabled) fetched = fetched + ArxivSource.fetchRecent()
-            fetched = fetched + BioRxivSource.fetchRecent(isoDay(now - 2 * DAY_MILLIS), isoDay(now))
+            // 프리프린트(arXiv·bioRxiv)는 꺼 두면 아예 요청하지 않는다.
+            if (sourcePrefs.value.arxivEnabled) {
+                fetched = fetched + ArxivSource.fetchRecent()
+                fetched = fetched + BioRxivSource.fetchRecent(isoDay(now - 2 * DAY_MILLIS), isoDay(now))
+            } else {
+                Log.i(TAG, "preprints disabled - skipping arXiv/bioRxiv")
+            }
 
             if (fetched.isEmpty()) {
                 lastError.value = "어느 소스에서도 논문을 받지 못했습니다. 네트워크를 확인해 주세요."
@@ -309,6 +323,7 @@ class NetworkPaperRepository(
                 notifLog = notifLog.value,
                 disabledJournals = sourcePrefs.value.disabledJournals,
                 arxivEnabled = sourcePrefs.value.arxivEnabled,
+                syncPeriodMinutes = sourcePrefs.value.syncPeriodMinutes,
                 sourceIds = OpenAlexSource.snapshot()
             )
         )
@@ -316,7 +331,6 @@ class NetworkPaperRepository(
 
     private companion object {
         const val DAY_MILLIS = 24L * 60L * 60L * 1000L
-        const val STALE_MILLIS = 15L * 60L * 1000L
         const val ABSTRACT_FETCH_BUDGET = 30
         const val MAX_EVENTS = 100
     }

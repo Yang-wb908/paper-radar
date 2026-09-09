@@ -5,10 +5,26 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import com.example.data.DEFAULT_SYNC_PERIOD_MINUTES
 import com.example.data.JournalCatalog
 
 /** 설정 화면의 저널 목록에서 arXiv 전체를 대표하는 항목 이름. */
 const val ARXIV_SOURCE_LABEL = "arXiv 프리프린트 (전체 카테고리)"
+
+/** 백그라운드 동기화 주기 선택지. WorkManager 최소 주기가 15분이라 그 아래는 두지 않는다. */
+val SYNC_PERIOD_OPTIONS: List<Pair<String, Int>> = listOf(
+    "30분" to 30,
+    "1시간" to 60,
+    "3시간" to 180,
+    "6시간" to 360,
+    "12시간" to 720
+)
+
+fun syncPeriodLabel(minutes: Int): String =
+    SYNC_PERIOD_OPTIONS.firstOrNull { it.second == minutes }?.first ?: "${minutes}분"
+
+fun syncPeriodMinutes(label: String): Int =
+    SYNC_PERIOD_OPTIONS.firstOrNull { it.first == label }?.second ?: DEFAULT_SYNC_PERIOD_MINUTES
 
 data class SettingsUiState(
     val fields: Map<String, Boolean> = mapOf(
@@ -21,7 +37,7 @@ data class SettingsUiState(
         (listOf(ARXIV_SOURCE_LABEL) + JournalCatalog.ALL.map { it.name }).associateWith { true },
     val sourcePrefsLoaded: Boolean = false,
     val notificationsEnabled: Boolean = true,
-    val syncPeriod: String = "1시간",
+    val syncPeriod: String = syncPeriodLabel(DEFAULT_SYNC_PERIOD_MINUTES),
     val quietTimeStart: String = "23:00",
     val quietTimeEnd: String = "08:00",
     val keywords: List<String> = emptyList(),
@@ -43,12 +59,16 @@ class SettingsViewModel : ViewModel() {
     }
 
     /** 저장소에 남아 있던 소스 설정을 화면 상태에 반영한다. 한 번만 호출된다. */
-    fun applySourcePrefs(disabledJournals: Set<String>, arxivEnabled: Boolean) {
+    fun applySourcePrefs(disabledJournals: Set<String>, arxivEnabled: Boolean, syncPeriodMinutes: Int) {
         _uiState.update { state ->
             val next = state.journals.keys.associateWith { name ->
                 if (name == ARXIV_SOURCE_LABEL) arxivEnabled else !disabledJournals.contains(name)
             }
-            state.copy(journals = next, sourcePrefsLoaded = true)
+            state.copy(
+                journals = next,
+                syncPeriod = syncPeriodLabel(syncPeriodMinutes),
+                sourcePrefsLoaded = true
+            )
         }
     }
 

@@ -6,6 +6,7 @@ import com.example.data.Field
 import com.example.data.NetworkPaperRepository
 import com.example.data.Paper
 import com.example.data.PaperRepository
+import com.example.data.SourcePrefs
 import com.example.data.SyncInfo
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -28,29 +29,31 @@ class FeedViewModel(private val repository: PaperRepository) : ViewModel() {
 
     private val _isRefreshing = MutableStateFlow(false)
     private val _selectedField = MutableStateFlow<Field?>(null)
-    private val _showPreprints = MutableStateFlow(true)
+    private val concrete = repository as? NetworkPaperRepository
 
     // 백그라운드 워커나 설정 탭에서 시작된 동기화도 피드 상단에 그대로 비친다.
-    private val syncInfo = (repository as? NetworkPaperRepository)?.syncInfo() ?: flowOf(SyncInfo())
+    private val syncInfo = concrete?.syncInfo() ?: flowOf(SyncInfo())
+
+    // 프리프린트 포함 여부는 저장소 설정과 같은 값. 끄면 수집 자체를 안 하고, 저장된 것도 숨긴다.
+    private val sourcePrefs = concrete?.sourcePrefs() ?: flowOf(SourcePrefs())
 
     val uiState: StateFlow<FeedUiState> = combine(
         repository.getPapers(),
         _selectedField,
         _isRefreshing,
-        _showPreprints,
+        sourcePrefs,
         syncInfo
-    ) { papers, selectedField, isRefreshing, showPreprints, info ->
-        val visible = if (showPreprints) papers else papers.filter { !it.isPreprint }
+    ) { papers, selectedField, isRefreshing, prefs, info ->
         val filteredPapers = if (selectedField == null) {
-            visible
+            papers
         } else {
-            visible.filter { it.fields.contains(selectedField) }
+            papers.filter { it.fields.contains(selectedField) }
         }
         FeedUiState(
             papers = filteredPapers.sortedByDescending { it.publishedDate },
             selectedField = selectedField,
             isRefreshing = isRefreshing || info.isSyncing,
-            showPreprints = showPreprints,
+            showPreprints = prefs.arxivEnabled,
             lastSyncMillis = info.lastSyncMillis,
             lastError = info.lastError
         )
@@ -61,7 +64,9 @@ class FeedViewModel(private val repository: PaperRepository) : ViewModel() {
     )
 
     fun togglePreprints() {
-        _showPreprints.value = !_showPreprints.value
+        val target = concrete ?: return
+        val next = !uiState.value.showPreprints
+        viewModelScope.launch { target.setPreprintsEnabled(next) }
     }
 
     fun setFieldFilter(field: Field?) {

@@ -2,20 +2,15 @@ package com.example.ui.settings
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun SettingsScreen(
     uiState: SettingsUiState,
@@ -31,8 +26,6 @@ fun SettingsScreen(
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
-    var keywordInput by remember { mutableStateOf("") }
-    var expandedSyncPeriod by remember { mutableStateOf(false) }
 
     Scaffold(
         modifier = modifier,
@@ -54,6 +47,27 @@ fun SettingsScreen(
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
+            // Sync period
+            item {
+                SectionTitle("백그라운드 동기화")
+                Text(
+                    text = "앱을 켤 때마다 한 번 받아오고, 그 사이에는 아래 주기로 자동 동기화합니다. " +
+                        "주기가 짧을수록 배터리와 데이터를 더 씁니다.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SYNC_PERIOD_OPTIONS.forEach { (label, _) ->
+                        FilterChip(
+                            selected = uiState.syncPeriod == label,
+                            onClick = { onSetSyncPeriod(label) },
+                            label = { Text(label) }
+                        )
+                    }
+                }
+            }
+
             // Journals Section
             item {
                 SectionTitle("저널 소스")
@@ -64,7 +78,7 @@ fun SettingsScreen(
                     onCheckedChange = { onToggleAllJournals(it) },
                     textStyle = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold)
                 )
-                
+
                 uiState.journals.forEach { (journal, isEnabled) ->
                     SwitchRow(label = journal, checked = isEnabled, onCheckedChange = { onToggleJournal(journal) })
                 }
