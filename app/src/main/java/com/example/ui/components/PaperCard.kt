@@ -112,16 +112,7 @@ fun PaperCard(
                             maxLines = 3,
                             overflow = TextOverflow.Ellipsis
                         )
-                        paper.originalTitleOrNull?.let { original ->
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = original,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
+                        
                     }
                 }
 

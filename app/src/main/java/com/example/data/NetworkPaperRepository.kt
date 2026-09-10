@@ -262,9 +262,8 @@ class NetworkPaperRepository(
                 }
             }
 
-            // 번역은 최신 논문부터. 논문당 한 번만 돌고 결과는 디스크에 남는다.
-            val ordered = merged.values.sortedByDescending { it.publishedDate }
-            papers.value = GeminiTranslator.translate(ordered)
+                        val ordered = merged.values.sortedByDescending { it.publishedDate }
+            papers.value = ordered
 
                 // 첫 수집분은 이미 알린 것으로 표시한다. 안 그러면 첫 백그라운드 동기화가
                 // 그동안 모은 전량을 "새 논문"이라며 한꺼번에 알린다.

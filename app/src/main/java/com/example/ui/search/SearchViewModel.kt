@@ -36,7 +36,7 @@ class SearchViewModel(private val repository: PaperRepository) : ViewModel() {
         } else {
             papers.filter { paper ->
                 val haystack = listOfNotNull(
-                        paper.title, paper.titleKo, paper.abstractText, paper.abstractKo,
+                        paper.title, paper.abstractText,
                         paper.journal, paper.authorsLine
                     )
                     val matchesQuery = query.isBlank() || haystack.any { it.contains(query, ignoreCase = true) }

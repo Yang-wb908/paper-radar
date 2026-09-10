@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.util.Log
+import com.example.R
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.work.Constraints
@@ -93,7 +94,9 @@ object Notifications {
         }
 
         val builder = NotificationCompat.Builder(context, CHANNEL_NEW_PAPERS)
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setColor(NOTIF_ACCENT)
+            .setColorized(false)
             .setContentTitle("새 논문 " + papers.size + "건 · " + fieldText)
             .setContentText(papers.first().displayTitle)
             .setStyle(NotificationCompat.BigTextStyle().bigText(preview))
@@ -111,6 +114,9 @@ object Notifications {
     }
 
     private const val NOTIFICATION_ID = 1001
+
+    /** 상태바 아이콘 틴트. 앱 아이콘의 시안 계열과 맞춘다. */
+    private val NOTIF_ACCENT = android.graphics.Color.parseColor("#5EE3E8")
 }
 
 /**
