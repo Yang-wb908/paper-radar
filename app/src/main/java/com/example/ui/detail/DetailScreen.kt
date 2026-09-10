@@ -23,6 +23,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import com.example.data.relativeDayLabel
 import com.example.ui.components.EmptyState
 import com.example.ui.components.FieldChip
 import com.example.ui.components.JournalBadge
@@ -98,9 +99,9 @@ fun DetailScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     JournalBadge(journalName = paper.journal)
-                    val daysAgo = ((System.currentTimeMillis() - paper.publishedDate) / 86400000L).toInt()
+                    val dayLabel = relativeDayLabel(paper.publishedDate)
                     Text(
-                        text = if (daysAgo == 0) "오늘" else "${daysAgo}일 전",
+                        text = dayLabel,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

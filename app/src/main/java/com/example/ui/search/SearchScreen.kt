@@ -17,7 +17,7 @@ import com.example.ui.components.EmptyState
 import com.example.ui.components.FieldChip
 import com.example.ui.components.PaperCard
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun SearchScreen(
     uiState: SearchUiState,
@@ -72,13 +72,14 @@ fun SearchScreen(
             Spacer(modifier = Modifier.height(8.dp))
             
             // Chips wrapping (simple row for now)
-            Row(
+            FlowRow(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Field.values().filter { it != Field.OTHER }.take(3).forEach { field ->
+                Field.values().filter { it != Field.OTHER }.forEach { field ->
                     FieldChip(
                         field = field,
                         selected = uiState.selectedFields.contains(field),

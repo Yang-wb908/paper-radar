@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.example.data.DEFAULT_SYNC_PERIOD_MINUTES
 import com.example.data.Field
 import com.example.data.NetworkPaperRepository
 import com.example.data.NotifPrefs
@@ -69,6 +70,15 @@ class NotificationsViewModel(
                 scope = viewModelScope,
                 started = SharingStarted.WhileSubscribed(5000),
                 initialValue = NotifPrefs()
+            )
+
+        val syncPeriodMinutes: StateFlow<Int> =
+        repository.sourcePrefs()
+            .map { it.syncPeriodMinutes }
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(5000),
+                initialValue = DEFAULT_SYNC_PERIOD_MINUTES
             )
 
     init {
@@ -117,6 +127,7 @@ class NotificationsViewModelFactory(
 fun NotificationsScreen(
     uiState: NotificationsUiState,
     prefs: NotifPrefs,
+    syncPeriodMinutes: Int,
     onToggleNotifications: () -> Unit,
     onToggleField: (Field) -> Unit,
     onToggleBookmark: (String) -> Unit,
@@ -145,6 +156,7 @@ fun NotificationsScreen(
             item(key = "prefs") {
                 NotificationPrefsCard(
                     prefs = prefs,
+                    syncPeriodMinutes = syncPeriodMinutes,
                     onToggleNotifications = onToggleNotifications,
                     onToggleField = onToggleField
                 )
@@ -195,6 +207,7 @@ fun NotificationsScreen(
 @Composable
 private fun NotificationPrefsCard(
     prefs: NotifPrefs,
+    syncPeriodMinutes: Int,
     onToggleNotifications: () -> Unit,
     onToggleField: (Field) -> Unit
 ) {
@@ -216,7 +229,7 @@ private fun NotificationPrefsCard(
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = "1시간마다 확인 · 조용 시간 23:00–08:00",
+                        text = syncPeriodText(syncPeriodMinutes) + " · 조용 시간 23:00–08:00",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -265,3 +278,8 @@ private fun formatTime(millis: Long): String {
     val fmt = SimpleDateFormat("M월 d일 HH:mm", Locale.KOREA)
     return fmt.format(Date(millis))
 }
+
+/** "3시간마다 확인" 같은 안내 문구. 설정의 백그라운드 주기를 그대로 비춘다. */
+private fun syncPeriodText(minutes: Int): String =
+    if (minutes % 60 == 0) (minutes / 60).toString() + "시간마다 확인"
+    else minutes.toString() + "분마다 확인"

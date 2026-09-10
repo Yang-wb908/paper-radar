@@ -49,3 +49,16 @@ data class Paper(
     val needsTranslation: Boolean
         get() = titleKo == null || (abstractText != null && abstractKo == null)
 }
+
+/** 카드·상세가 같이 쓰는 상대 날짜 표기. 발행일이 없거나 미래여도 안전하게 접는다. */
+fun relativeDayLabel(publishedDate: Long, now: Long = System.currentTimeMillis()): String {
+    if (publishedDate <= 0L) return "날짜 미상"
+    val days = ((now - publishedDate) / 86_400_000L).toInt()
+    return when {
+        days <= 0 -> "오늘"
+        days == 1 -> "어제"
+        days < 30 -> days.toString() + "일 전"
+        days < 365 -> (days / 30).toString() + "개월 전"
+        else -> (days / 365).toString() + "년 전"
+    }
+}

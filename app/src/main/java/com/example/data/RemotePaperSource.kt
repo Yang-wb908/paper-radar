@@ -18,6 +18,9 @@ import java.util.concurrent.TimeUnit
 
 internal const val TAG = "PaperRadar"
 
+/** 429·5xx는 조용히 빈 결과로 넘기지 않고 위로 올려서 피드에 사유가 뜨게 한다. */
+internal class HttpStatusException(val code: Int) : java.io.IOException("HTTP " + code)
+
 /** OpenAlex/Crossref polite pool 진입용 연락처. UA와 mailto 파라미터 양쪽에 넣는다. */
 private const val CONTACT = "jumpboy85@gmail.com"
 private const val USER_AGENT = "PaperRadar/1.0 (Android; mailto:jumpboy85@gmail.com)"
@@ -38,6 +41,7 @@ internal object Http {
                 .build()
             client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
+                    if (response.code == 429 || response.code >= 500) throw HttpStatusException(response.code)
                     Log.w(TAG, "HTTP " + response.code + " <- " + url)
                     return null
                 }
@@ -45,6 +49,7 @@ internal object Http {
                 JSONObject(body)
             }
         } catch (e: Exception) {
+            if (e is HttpStatusException || e is java.net.UnknownHostException) throw e
             Log.w(TAG, "request failed: " + e.message)
             null
         }
@@ -61,6 +66,7 @@ internal object Http {
             client.newCall(request).execute().use { response ->
                 val body = response.body?.string()
                 if (!response.isSuccessful) {
+                    if (response.code == 429 || response.code >= 500) throw HttpStatusException(response.code)
                     Log.w(TAG, "HTTP " + response.code + " <- " + url.substringBefore("?key="))
                     return null
                 }
@@ -68,6 +74,7 @@ internal object Http {
                 JSONObject(body)
             }
         } catch (e: Exception) {
+            if (e is HttpStatusException || e is java.net.UnknownHostException) throw e
             Log.w(TAG, "post failed: " + e.message)
             null
         }
@@ -84,12 +91,14 @@ internal object Http {
                 .build()
             client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
+                    if (response.code == 429 || response.code >= 500) throw HttpStatusException(response.code)
                     Log.w(TAG, "HTTP " + response.code + " <- " + url)
                     return null
                 }
                 response.body?.string()
             }
         } catch (e: Exception) {
+            if (e is HttpStatusException || e is java.net.UnknownHostException) throw e
             Log.w(TAG, "post failed: " + e.message)
             null
         }
@@ -104,12 +113,14 @@ internal object Http {
                 .build()
             client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
+                    if (response.code == 429 || response.code >= 500) throw HttpStatusException(response.code)
                     Log.w(TAG, "HTTP " + response.code + " <- " + url)
                     return null
                 }
                 response.body?.string()
             }
         } catch (e: Exception) {
+            if (e is HttpStatusException || e is java.net.UnknownHostException) throw e
             Log.w(TAG, "text request failed: " + e.message)
             null
         }
@@ -298,7 +309,8 @@ object OpenAlexSource {
     suspend fun fetchRecent(
         journals: List<JournalSource>,
         sinceDay: String,
-        perPage: Int = 200
+        perPage: Int = 200,
+        maxPages: Int = 8
     ): List<Paper> = withContext(Dispatchers.IO) {
         val idToJournal = resolveAll(journals)
         if (idToJournal.isEmpty()) {
@@ -309,19 +321,27 @@ object OpenAlexSource {
         val filter = "primary_location.source.id:" + idToJournal.keys.joinToString("|") +
             ",from_publication_date:" + sinceDay
         val select = "id,doi,title,publication_date,primary_location,authorships,topics,abstract_inverted_index"
-        val url = BASE + "/works?filter=" + enc(filter) +
-            "&sort=publication_date:desc&per-page=" + perPage +
-            "&select=" + select + "&mailto=" + CONTACT
 
-        val root = Http.getJson(url) ?: return@withContext emptyList()
-        val results = root.optJSONArray("results") ?: return@withContext emptyList()
-
-        val papers = ArrayList<Paper>(results.length())
-        for (i in 0 until results.length()) {
-            val item = results.optJSONObject(i) ?: continue
-            parseWork(item)?.let { papers.add(it) }
+        // 한 페이지(200건)만 받으면 저널 하나가 통째로 잘려 나간다. 커서로 이어 받는다.
+        val papers = ArrayList<Paper>()
+        var cursor = "*"
+        var page = 0
+        while (page < maxPages && cursor.isNotBlank()) {
+            val url = BASE + "/works?filter=" + enc(filter) +
+                "&sort=publication_date:desc&per-page=" + perPage +
+                "&select=" + select + "&cursor=" + enc(cursor) + "&mailto=" + CONTACT
+            val root = Http.getJson(url) ?: break
+            val results = root.optJSONArray("results") ?: break
+            if (results.length() == 0) break
+            for (i in 0 until results.length()) {
+                val item = results.optJSONObject(i) ?: continue
+                parseWork(item)?.let { papers.add(it) }
+            }
+            page++
+            if (results.length() < perPage) break
+            cursor = root.optJSONObject("meta")?.optString("next_cursor").orEmpty()
         }
-        Log.i(TAG, "OpenAlex returned " + papers.size + " papers since " + sinceDay)
+        Log.i(TAG, "OpenAlex returned " + papers.size + " papers since " + sinceDay + " (" + page + " pages)")
         papers
     }
 

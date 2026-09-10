@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.Field
 import com.example.data.Paper
+import com.example.data.relativeDayLabel
 import com.example.ui.theme.*
 
 @Composable
@@ -80,9 +81,9 @@ fun PaperCard(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     JournalBadge(journalName = paper.journal)
-                    val daysAgo = ((System.currentTimeMillis() - paper.publishedDate) / 86400000L).toInt()
+                    val dayLabel = relativeDayLabel(paper.publishedDate)
                     Text(
-                        text = if (daysAgo == 0) "오늘" else "${daysAgo}일 전",
+                        text = dayLabel,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

@@ -3,6 +3,7 @@ package com.example.data
 import android.util.Log
 import android.util.Xml
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import org.xmlpull.v1.XmlPullParser
 import java.io.StringReader
@@ -62,19 +63,32 @@ object ArxivSource {
 
     suspend fun fetchRecent(
         categories: List<ArxivCategory> = ArxivCatalog.ALL,
-        maxResults: Int = 120
+        perGroup: Int = 100
     ): List<Paper> = withContext(Dispatchers.IO) {
         if (categories.isEmpty()) return@withContext emptyList()
 
-        val query = categories.joinToString("+OR+") { "cat:" + it.code }
-        val url = BASE + "?search_query=" + query +
-            "&sortBy=submittedDate&sortOrder=descending&max_results=" + maxResults
-
-        val xml = Http.getText(url) ?: return@withContext emptyList()
-        val papers = parseFeed(xml)
-        Log.i(TAG, "arXiv returned " + papers.size + " preprints")
-        papers
+        // 전체 카테고리를 OR로 묶어 한 번에 받으면 cs.LG·cs.CV가 결과를 다 먹는다.
+        // 분야별로 나눠 받아야 광학·생명 쪽도 피드에 올라온다.
+        val groups = categories.groupBy { it.fields.firstOrNull() ?: Field.OTHER }
+        val out = LinkedHashMap<String, Paper>()
+        for ((field, group) in groups) {
+            val query = group.joinToString("+OR+") { "cat:" + it.code }
+            val url = BASE + "?search_query=" + query +
+                "&sortBy=submittedDate&sortOrder=descending&max_results=" + perGroup
+            val xml = Http.getText(url)
+            if (xml == null) {
+                Log.w(TAG, "arXiv group " + field.name + " failed")
+                continue
+            }
+            for (paper in parseFeed(xml)) out[paper.id] = paper
+            delay(ARXIV_GAP_MILLIS)
+        }
+        Log.i(TAG, "arXiv returned " + out.size + " preprints from " + groups.size + " groups")
+        out.values.toList()
     }
+
+    /** arXiv API 권장 간격. 연속 요청으로 막히지 않게 그룹 사이에 쉰다. */
+    private const val ARXIV_GAP_MILLIS = 1000L
 
     private fun parseFeed(xml: String): List<Paper> {
         val out = ArrayList<Paper>()

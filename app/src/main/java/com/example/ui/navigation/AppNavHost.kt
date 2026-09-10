@@ -1,5 +1,6 @@
 package com.example.ui.navigation
 
+import android.net.Uri
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
@@ -137,7 +138,7 @@ fun AppNavHost(
                     onToggleBookmark = viewModel::toggleBookmark,
                     onRefresh = viewModel::refresh,
                     onNavigateToSearch = { navController.navigate(Screen.Search.route) },
-                    onNavigateToDetail = { paperId -> navController.navigate("detail/$paperId") }
+                    onNavigateToDetail = { paperId -> navController.navigate("detail/" + Uri.encode(paperId)) }
                 )
             }
             composable(Screen.Search.route) {
@@ -149,7 +150,7 @@ fun AppNavHost(
                     onSearch = viewModel::onSearch,
                     onToggleField = viewModel::toggleField,
                     onToggleBookmark = viewModel::toggleBookmark,
-                    onNavigateToDetail = { paperId -> navController.navigate("detail/$paperId") }
+                    onNavigateToDetail = { paperId -> navController.navigate("detail/" + Uri.encode(paperId)) }
                 )
             }
             composable(Screen.Notifications.route) {
@@ -159,13 +160,15 @@ fun AppNavHost(
                     viewModel(factory = NotificationsViewModelFactory(concrete))
                 val uiState by viewModel.uiState.collectAsStateWithLifecycle()
                 val prefs by viewModel.prefs.collectAsStateWithLifecycle()
+                    val syncPeriod by viewModel.syncPeriodMinutes.collectAsStateWithLifecycle()
                 NotificationsScreen(
                     uiState = uiState,
                     prefs = prefs,
+                        syncPeriodMinutes = syncPeriod,
                     onToggleNotifications = viewModel::toggleNotifications,
                     onToggleField = viewModel::toggleField,
                     onToggleBookmark = viewModel::toggleBookmark,
-                    onNavigateToDetail = { paperId -> navController.navigate("detail/$paperId") }
+                    onNavigateToDetail = { paperId -> navController.navigate("detail/" + Uri.encode(paperId)) }
                 )
             }
             composable(Screen.Library.route) {
@@ -174,7 +177,7 @@ fun AppNavHost(
                 LibraryScreen(
                     uiState = uiState,
                     onRemoveBookmark = viewModel::removeBookmark,
-                    onNavigateToDetail = { paperId -> navController.navigate("detail/$paperId") }
+                    onNavigateToDetail = { paperId -> navController.navigate("detail/" + Uri.encode(paperId)) }
                 )
             }
             composable(Screen.Settings.route) {
@@ -223,7 +226,7 @@ fun AppNavHost(
                 route = "detail/{paperId}",
                 arguments = listOf(navArgument("paperId") { type = NavType.StringType })
             ) { backStackEntry ->
-                val paperId = backStackEntry.arguments?.getString("paperId") ?: return@composable
+                val paperId = backStackEntry.arguments?.getString("paperId")?.let { Uri.decode(it) } ?: return@composable
                 val viewModel: DetailViewModel = viewModel(factory = DetailViewModelFactory(paperId, repository))
                 // 상세를 열면 읽음 처리 → 카드의 파란 점이 사라진다.
                 LaunchedEffect(paperId) { (repository as? NetworkPaperRepository)?.markRead(paperId) }
