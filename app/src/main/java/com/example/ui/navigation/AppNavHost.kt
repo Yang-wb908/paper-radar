@@ -81,11 +81,23 @@ val bottomNavItems = listOf(
 @Composable
 fun AppNavHost(
     navController: NavHostController = rememberNavController(),
-    repository: PaperRepository = AppGraph.repository(LocalContext.current)
+    repository: PaperRepository = AppGraph.repository(LocalContext.current),
+    initialRoute: String? = null
 ) {
     val paperRepository = repository as? NetworkPaperRepository
     val unreadCount by (paperRepository?.unreadNotificationCount() ?: flowOf(0))
         .collectAsStateWithLifecycle(initialValue = 0)
+
+    // 알림을 누르고 들어온 경우 해당 탭으로 바로 보낸다.
+    LaunchedEffect(initialRoute) {
+        if (initialRoute != null) {
+            navController.navigate(initialRoute) {
+                popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                launchSingleTop = true
+                restoreState = true
+            }
+        }
+    }
 
     Scaffold(
         bottomBar = {
@@ -198,6 +210,12 @@ fun AppNavHost(
                 }
                 val syncScope = rememberCoroutineScope()
                 LaunchedEffect(concrete) {
+                    concrete?.themeMode()?.collect { viewModel.applyThemeMode(it) }
+                }
+            LaunchedEffect(concrete) {
+                concrete?.themeMode()?.collect { viewModel.applyThemeMode(it) }
+            }
+                LaunchedEffect(concrete) {
                     concrete?.syncInfo()?.collect { info ->
                         viewModel.applySyncInfo(info.lastSyncMillis, info.paperCount)
                     }
@@ -225,6 +243,7 @@ fun AppNavHost(
                     onSetSyncPeriod = viewModel::setSyncPeriod,
                     onAddKeyword = viewModel::addKeyword,
                     onRemoveKeyword = viewModel::removeKeyword,
+                    onSetTheme = { mode -> syncScope.launch { concrete?.updateThemeMode(mode) } },
                     onSyncNow = { syncScope.launch { concrete?.refresh() } }
                 )
             }

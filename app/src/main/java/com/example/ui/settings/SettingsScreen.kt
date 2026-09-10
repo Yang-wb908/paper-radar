@@ -19,6 +19,7 @@ fun SettingsScreen(
     onToggleAllJournals: (Boolean) -> Unit,
     onToggleNotifications: () -> Unit,
     onSetSyncPeriod: (String) -> Unit,
+    onSetTheme: (String) -> Unit = {},
     onAddKeyword: (String) -> Unit,
     onRemoveKeyword: (String) -> Unit,
     onSyncNow: () -> Unit = {},
@@ -47,6 +48,20 @@ fun SettingsScreen(
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
+            // 화면 테마
+            item {
+                SectionTitle("화면 테마")
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    THEME_OPTIONS.forEach { (label, value) ->
+                        FilterChip(
+                            selected = uiState.themeMode == value,
+                            onClick = { onSetTheme(value) },
+                            label = { Text(label) }
+                        )
+                    }
+                }
+            }
+
             // Sync period
             item {
                 SectionTitle("백그라운드 동기화")
@@ -71,6 +86,17 @@ fun SettingsScreen(
             // Journals Section
             item {
                 SectionTitle("저널 소스")
+                var journalQuery by remember { mutableStateOf("") }
+                OutlinedTextField(
+                    value = journalQuery,
+                    onValueChange = { journalQuery = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text("저널 이름 검색") },
+                    singleLine = true,
+                    shape = MaterialTheme.shapes.medium
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+
                 val allJournalsEnabled = uiState.journals.values.all { it }
                 SwitchRow(
                     label = "전체 선택",
@@ -79,8 +105,32 @@ fun SettingsScreen(
                     textStyle = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold)
                 )
 
-                uiState.journals.forEach { (journal, isEnabled) ->
-                    SwitchRow(label = journal, checked = isEnabled, onCheckedChange = { onToggleJournal(journal) })
+                // 40종이 넘는 평면 목록은 찾기 어렵다. 분야별로 묶고 검색으로 좁힌다.
+                val visible = uiState.journals.filterKeys { it.contains(journalQuery, ignoreCase = true) }
+                val grouped = visible.keys.groupBy { journalGroupLabel(it) }
+                for (groupLabel in JOURNAL_GROUP_ORDER) {
+                    val names = grouped[groupLabel] ?: continue
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = groupLabel,
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    names.forEach { journal ->
+                        SwitchRow(
+                            label = journal,
+                            checked = visible[journal] ?: true,
+                            onCheckedChange = { onToggleJournal(journal) }
+                        )
+                    }
+                }
+                if (visible.isEmpty()) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = "검색 결과가 없습니다.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
 

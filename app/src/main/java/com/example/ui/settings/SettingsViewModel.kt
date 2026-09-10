@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import com.example.data.DEFAULT_SYNC_PERIOD_MINUTES
+import com.example.data.Field
 import com.example.data.JournalCatalog
 
 /** 설정 화면의 저널 목록에서 arXiv 전체를 대표하는 항목 이름. */
@@ -26,6 +27,31 @@ fun syncPeriodLabel(minutes: Int): String =
 fun syncPeriodMinutes(label: String): Int =
     SYNC_PERIOD_OPTIONS.firstOrNull { it.first == label }?.second ?: DEFAULT_SYNC_PERIOD_MINUTES
 
+/** 화면 테마 선택지. 저장 값은 "system" | "light" | "dark". */
+val THEME_OPTIONS: List<Pair<String, String>> = listOf(
+    "시스템 설정" to "system",
+    "라이트" to "light",
+    "다크" to "dark"
+)
+
+/** 저널 목록을 분야별로 묶을 때 쓰는 표시 순서. */
+val JOURNAL_GROUP_ORDER: List<String> = listOf(
+    "프리프린트",
+    "종합지",
+    Field.SEMI.labelKo,
+    Field.AI.labelKo,
+    Field.COMM.labelKo,
+    Field.ENERGY.labelKo,
+    Field.BIO.labelKo
+)
+
+/** 저널 하나가 어느 그룹에 들어가는지. 종합지는 분야 매핑이 비어 있다. */
+fun journalGroupLabel(name: String): String {
+    if (name == ARXIV_SOURCE_LABEL) return "프리프린트"
+    val fields = JournalCatalog.byName(name)?.fields.orEmpty()
+    return if (fields.isEmpty()) "종합지" else fields.first().labelKo
+}
+
 data class SettingsUiState(
     val fields: Map<String, Boolean> = mapOf(
         "반도체·소자·재료" to true,
@@ -35,6 +61,7 @@ data class SettingsUiState(
     ),
     val journals: Map<String, Boolean> =
         (listOf(ARXIV_SOURCE_LABEL) + JournalCatalog.ALL.map { it.name }).associateWith { true },
+    val themeMode: String = "system",
     val sourcePrefsLoaded: Boolean = false,
     val notificationsEnabled: Boolean = true,
     val syncPeriod: String = syncPeriodLabel(DEFAULT_SYNC_PERIOD_MINUTES),
@@ -81,6 +108,11 @@ class SettingsViewModel : ViewModel() {
                 .format(java.util.Date(lastSyncMillis))
         }
         _uiState.update { it.copy(lastSyncTime = label, savedPaperCount = paperCount) }
+    }
+
+    /** 저장소에서 읽어온 테마를 화면에 반영한다. */
+    fun applyThemeMode(mode: String) {
+        _uiState.update { it.copy(themeMode = mode) }
     }
 
     fun toggleJournal(journalName: String) {

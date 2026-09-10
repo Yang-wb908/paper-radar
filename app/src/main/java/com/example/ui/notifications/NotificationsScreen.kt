@@ -22,6 +22,14 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.InputChip
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -105,6 +113,26 @@ class NotificationsViewModel(
         }
     }
 
+    fun addKeyword(keyword: String) {
+        val trimmed = keyword.trim()
+        if (trimmed.isEmpty()) return
+        viewModelScope.launch {
+            val current = repository.notificationPrefs().first()
+            repository.updateKeywords(current.keywords + trimmed)
+        }
+    }
+
+    fun removeKeyword(keyword: String) {
+        viewModelScope.launch {
+            val current = repository.notificationPrefs().first()
+            repository.updateKeywords(current.keywords - keyword)
+        }
+    }
+
+    fun setQuietHours(startHour: Int, endHour: Int) {
+        viewModelScope.launch { repository.updateQuietHours(startHour, endHour) }
+    }
+
     fun toggleBookmark(paperId: String) {
         viewModelScope.launch { repository.toggleBookmark(paperId) }
     }
@@ -130,6 +158,9 @@ fun NotificationsScreen(
     syncPeriodMinutes: Int,
     onToggleNotifications: () -> Unit,
     onToggleField: (Field) -> Unit,
+    onAddKeyword: (String) -> Unit = {},
+    onRemoveKeyword: (String) -> Unit = {},
+    onSetQuietHours: (Int, Int) -> Unit = { _, _ -> },
     onToggleBookmark: (String) -> Unit,
     onNavigateToDetail: (String) -> Unit,
     modifier: Modifier = Modifier
@@ -158,7 +189,10 @@ fun NotificationsScreen(
                     prefs = prefs,
                     syncPeriodMinutes = syncPeriodMinutes,
                     onToggleNotifications = onToggleNotifications,
-                    onToggleField = onToggleField
+                    onToggleField = onToggleField,
+                    onAddKeyword = onAddKeyword,
+                    onRemoveKeyword = onRemoveKeyword,
+                    onSetQuietHours = onSetQuietHours
                 )
             }
 
@@ -209,7 +243,10 @@ private fun NotificationPrefsCard(
     prefs: NotifPrefs,
     syncPeriodMinutes: Int,
     onToggleNotifications: () -> Unit,
-    onToggleField: (Field) -> Unit
+    onToggleField: (Field) -> Unit,
+    onAddKeyword: (String) -> Unit,
+    onRemoveKeyword: (String) -> Unit,
+    onSetQuietHours: (Int, Int) -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -261,6 +298,76 @@ private fun NotificationPrefsCard(
                     )
                 }
             }
+
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                text = "키워드 워치리스트",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                text = "관심 분야가 아니어도 제목·초록에 이 단어가 있으면 알립니다.",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            var keywordInput by remember { mutableStateOf("") }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(
+                    value = keywordInput,
+                    onValueChange = { keywordInput = it },
+                    modifier = Modifier.weight(1f),
+                    placeholder = { Text("예: perovskite") },
+                    singleLine = true
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                TextButton(onClick = {
+                    onAddKeyword(keywordInput)
+                    keywordInput = ""
+                }) { Text("추가") }
+            }
+            if (prefs.keywords.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(6.dp))
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    for (keyword in prefs.keywords) {
+                        InputChip(
+                            selected = false,
+                            onClick = { onRemoveKeyword(keyword) },
+                            label = { Text(keyword) },
+                            trailingIcon = { Text("×") }
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                text = "조용 시간",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                text = "이 시간대에는 알림을 보류했다가 끝나면 모아서 보냅니다.",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                HourStepper(
+                    label = "시작",
+                    hour = prefs.quietStartHour,
+                    onChange = { onSetQuietHours(it, prefs.quietEndHour) }
+                )
+                Spacer(modifier = Modifier.width(16.dp))
+                HourStepper(
+                    label = "종료",
+                    hour = prefs.quietEndHour,
+                    onChange = { onSetQuietHours(prefs.quietStartHour, it) }
+                )
+            }
         }
     }
 }
@@ -283,3 +390,22 @@ private fun formatTime(millis: Long): String {
 private fun syncPeriodText(minutes: Int): String =
     if (minutes % 60 == 0) (minutes / 60).toString() + "시간마다 확인"
     else minutes.toString() + "분마다 확인"
+
+/** 조용 시간 시작·종료를 한 시간 단위로 조절하는 작은 스테퍼. */
+@Composable
+private fun HourStepper(label: String, hour: Int, onChange: (Int) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        TextButton(onClick = { onChange((hour + 23) % 24) }) { Text("−") }
+        Text(
+            text = String.format(Locale.KOREA, "%02d:00", hour),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        TextButton(onClick = { onChange((hour + 1) % 24) }) { Text("+") }
+    }
+}

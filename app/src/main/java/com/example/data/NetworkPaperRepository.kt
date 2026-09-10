@@ -14,7 +14,10 @@ import kotlinx.coroutines.sync.Mutex
 /** 알림 탭이 구독하는 알림 설정. */
 data class NotifPrefs(
     val enabledFields: Set<Field> = setOf(Field.SEMI, Field.AI, Field.COMM, Field.ENERGY, Field.BIO),
-    val notificationsEnabled: Boolean = true
+    val notificationsEnabled: Boolean = true,
+    val keywords: Set<String> = emptySet(),
+    val quietStartHour: Int = 23,
+    val quietEndHour: Int = 8
 )
 
 /** 설정 탭의 "데이터" 섹션과 피드 상단 요약이 같이 구독한다. */
@@ -66,6 +69,17 @@ class NetworkPaperRepository(
     private var notificationsEnabled: Boolean = true
 
     @Volatile
+    private var keywords: Set<String> = emptySet()
+
+    @Volatile
+    private var quietStartHour: Int = 23
+
+    @Volatile
+    private var quietEndHour: Int = 8
+
+    private val theme = MutableStateFlow("system")
+
+    @Volatile
     private var lastSyncMillis: Long = 0L
 
     init {
@@ -86,7 +100,11 @@ class NetworkPaperRepository(
         notificationsEnabled = saved.notificationsEnabled
         lastSyncMillis = saved.lastSyncMillis
         lastSync.value = saved.lastSyncMillis
-        notifPrefs.value = NotifPrefs(enabledFields, notificationsEnabled)
+        keywords = saved.keywords
+        quietStartHour = saved.quietStartHour
+        quietEndHour = saved.quietEndHour
+        theme.value = saved.themeMode
+        notifPrefs.value = NotifPrefs(enabledFields, notificationsEnabled, keywords, quietStartHour, quietEndHour)
         sourcePrefs.value = SourcePrefs(saved.disabledJournals, saved.arxivEnabled, saved.syncPeriodMinutes)
         OpenAlexSource.preload(saved.sourceIds)
         Log.i(TAG, "restored " + saved.papers.size + " papers from disk")
@@ -130,7 +148,39 @@ class NetworkPaperRepository(
         if (fields == enabledFields && enabled == notificationsEnabled) return
         enabledFields = fields
         notificationsEnabled = enabled
-        notifPrefs.value = NotifPrefs(fields, enabled)
+        notifPrefs.value = NotifPrefs(fields, enabled, keywords, quietStartHour, quietEndHour)
+        persist()
+    }
+
+    /** 알림 키워드 워치리스트. 관심 분야와 별개로 걸리면 알린다. */
+    suspend fun updateKeywords(next: Set<String>) {
+        if (next == keywords) return
+        keywords = next
+        notifPrefs.value = NotifPrefs(enabledFields, notificationsEnabled, keywords, quietStartHour, quietEndHour)
+        persist()
+    }
+
+    suspend fun updateQuietHours(startHour: Int, endHour: Int) {
+        if (startHour == quietStartHour && endHour == quietEndHour) return
+        quietStartHour = startHour
+        quietEndHour = endHour
+        notifPrefs.value = NotifPrefs(enabledFields, notificationsEnabled, keywords, quietStartHour, quietEndHour)
+        persist()
+    }
+
+    /** 조용 시간 판정. 자정을 넘기는 구간(23~08)도 처리한다. */
+    fun isQuietHour(hour: Int): Boolean = when {
+        quietStartHour == quietEndHour -> false
+        quietStartHour < quietEndHour -> hour >= quietStartHour && hour < quietEndHour
+        else -> hour >= quietStartHour || hour < quietEndHour
+    }
+
+    /** "system" | "light" | "dark". 앱 전체 테마를 설정에서 강제한다. */
+    fun themeMode(): Flow<String> = theme
+
+    suspend fun updateThemeMode(mode: String) {
+        if (mode == theme.value) return
+        theme.value = mode
         persist()
     }
 
@@ -167,10 +217,17 @@ class NetworkPaperRepository(
     suspend fun consumeUnnotified(): List<Paper> {
         if (!notificationsEnabled) return emptyList()
         val preprintsOn = sourcePrefs.value.arxivEnabled
+        val watch = keywords
         val fresh = papers.value.filter { paper ->
-            !notified.contains(paper.id) &&
-                (preprintsOn || !paper.isPreprint) &&
-                paper.fields.any { enabledFields.contains(it) }
+            if (notified.contains(paper.id)) return@filter false
+            if (!preprintsOn && paper.isPreprint) return@filter false
+            val fieldHit = paper.fields.any { enabledFields.contains(it) }
+            // 워치리스트에 걸리면 관심 분야가 아니어도 알린다.
+            val keywordHit = watch.any { key ->
+                paper.title.contains(key, ignoreCase = true) ||
+                    paper.abstractText?.contains(key, ignoreCase = true) == true
+            }
+            fieldHit || keywordHit
         }
         if (fresh.isEmpty()) return emptyList()
         notified = notified + fresh.map { it.id }
@@ -331,6 +388,10 @@ class NetworkPaperRepository(
                 disabledJournals = sourcePrefs.value.disabledJournals,
                 arxivEnabled = sourcePrefs.value.arxivEnabled,
                 syncPeriodMinutes = sourcePrefs.value.syncPeriodMinutes,
+                keywords = keywords,
+                quietStartHour = quietStartHour,
+                quietEndHour = quietEndHour,
+                themeMode = theme.value,
                 sourceIds = OpenAlexSource.snapshot()
             )
         )

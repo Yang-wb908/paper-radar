@@ -43,6 +43,9 @@ object Notifications {
 
     const val CHANNEL_NEW_PAPERS = "new_papers"
 
+    /** 알림을 눌렀을 때 열 탭. MainActivity가 읽는다. */
+    const val EXTRA_TARGET_TAB = "paper_radar_target_tab"
+
     /** 기본 조용 시간. 이 구간에는 알림을 보류하고 다음 사이클에 합산해 보낸다. */
     private const val QUIET_START_HOUR = 23
     private const val QUIET_END_HOUR = 8
@@ -82,7 +85,10 @@ object Notifications {
 
         val launchIntent = context.packageManager
             .getLaunchIntentForPackage(context.packageName)
-            ?.apply { flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP }
+            ?.apply {
+                flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                putExtra(EXTRA_TARGET_TAB, "notifications")
+            }
 
         val pendingIntent = launchIntent?.let {
             PendingIntent.getActivity(
@@ -137,7 +143,8 @@ class SyncWorker(
             return Result.retry()
         }
 
-        if (Notifications.isQuietHour()) {
+        val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+        if (repository.isQuietHour(hour)) {
             Log.i(TAG, "quiet hour - holding notification")
             return Result.success()
         }

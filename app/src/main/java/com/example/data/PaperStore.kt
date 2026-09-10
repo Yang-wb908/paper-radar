@@ -23,6 +23,10 @@ data class StoredState(
     val disabledJournals: Set<String> = emptySet(),
     val arxivEnabled: Boolean = true,
     val syncPeriodMinutes: Int = DEFAULT_SYNC_PERIOD_MINUTES,
+    val keywords: Set<String> = emptySet(),
+    val quietStartHour: Int = 23,
+    val quietEndHour: Int = 8,
+    val themeMode: String = "system",
     val sourceIds: Map<String, String> = emptyMap()
 )
 
@@ -60,6 +64,10 @@ class PaperStore(context: Context) {
                 disabledJournals = parseStrings(root.optJSONArray("disabledJournals")),
                 arxivEnabled = root.optBoolean("arxivEnabled", true),
                 syncPeriodMinutes = root.optInt("syncPeriodMinutes", DEFAULT_SYNC_PERIOD_MINUTES),
+                keywords = parseStrings(root.optJSONArray("keywords")),
+                quietStartHour = root.optInt("quietStartHour", 23),
+                quietEndHour = root.optInt("quietEndHour", 8),
+                themeMode = root.optString("themeMode", "system").ifBlank { "system" },
                 sourceIds = parseStringMap(root.optJSONObject("sourceIds"))
             )
         } catch (e: Exception) {
@@ -98,6 +106,10 @@ class PaperStore(context: Context) {
             root.put("disabledJournals", JSONArray(state.disabledJournals.toList()))
             root.put("arxivEnabled", state.arxivEnabled)
             root.put("syncPeriodMinutes", state.syncPeriodMinutes)
+            root.put("keywords", JSONArray(state.keywords.toList()))
+            root.put("quietStartHour", state.quietStartHour)
+            root.put("quietEndHour", state.quietEndHour)
+            root.put("themeMode", state.themeMode)
             root.put("sourceIds", JSONObject(state.sourceIds))
             file.writeText(root.toString())
         } catch (e: Exception) {
