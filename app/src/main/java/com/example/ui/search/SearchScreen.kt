@@ -24,6 +24,8 @@ fun SearchScreen(
     onQueryChange: (String) -> Unit,
     onSearch: (String) -> Unit,
     onToggleField: (Field) -> Unit,
+    onSetPeriod: (SearchPeriod) -> Unit = {},
+    onRecentClick: (String) -> Unit = {},
     onToggleBookmark: (String) -> Unit,
     onNavigateToDetail: (String) -> Unit,
     modifier: Modifier = Modifier
@@ -85,6 +87,52 @@ fun SearchScreen(
                         selected = uiState.selectedFields.contains(field),
                         onClick = { onToggleField(field) }
                     )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Text(
+                text = "기간",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp)
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            FlowRow(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                SearchPeriod.values().forEach { period ->
+                    FilterChip(
+                        selected = uiState.period == period,
+                        onClick = { onSetPeriod(period) },
+                        label = { Text(period.labelKo) }
+                    )
+                }
+            }
+
+            if (uiState.query.isBlank() && uiState.recentSearches.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = "최근 검색어",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    uiState.recentSearches.forEach { keyword ->
+                        AssistChip(
+                            onClick = { onRecentClick(keyword) },
+                            label = { Text(keyword) }
+                        )
+                    }
                 }
             }
 

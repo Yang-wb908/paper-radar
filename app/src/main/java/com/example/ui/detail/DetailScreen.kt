@@ -135,13 +135,9 @@ fun DetailScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                     )
                 } else {
-                    val displayAbstract = if (abstractBody.length > 400) {
-                        abstractBody.take(400) + "…"
-                    } else {
-                        abstractBody
-                    }
+                    
                     Text(
-                        text = displayAbstract,
+                        text = abstractBody,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

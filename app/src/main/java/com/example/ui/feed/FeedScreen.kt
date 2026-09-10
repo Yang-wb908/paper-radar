@@ -28,6 +28,7 @@ fun FeedScreen(
     uiState: FeedUiState,
     onFilterSelected: (Field?) -> Unit,
     onTogglePreprints: () -> Unit = {},
+    onToggleHideRead: () -> Unit = {},
     onToggleBookmark: (String) -> Unit,
     onRefresh: () -> Unit,
     onNavigateToSearch: () -> Unit,
@@ -133,6 +134,15 @@ fun FeedScreen(
                         }
                     )
                 }
+                // 읽은 논문 숨기기. 북마크는 읽었어도 남는다.
+                item {
+                    FilterChip(
+                        selected = uiState.hideRead,
+                        onClick = onToggleHideRead,
+                        label = { Text(if (uiState.hideRead) "안 읽은 것만" else "읽은 것 포함") }
+                    )
+                }
+
                 // 프리프린트(arXiv·bioRxiv) 포함 여부 — 홈에서 바로 끄고 켠다
                 item {
                     FilterChip(

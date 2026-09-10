@@ -21,6 +21,7 @@ data class FeedUiState(
     val selectedField: Field? = null, // null means "All"
     val isRefreshing: Boolean = false,
     val showPreprints: Boolean = true,
+    val hideRead: Boolean = false,
     val lastSyncMillis: Long = 0L,
     val lastError: String? = null
 )
@@ -31,6 +32,12 @@ class FeedViewModel(private val repository: PaperRepository) : ViewModel() {
     private val _selectedField = MutableStateFlow<Field?>(null)
     private val concrete = repository as? NetworkPaperRepository
 
+    /** 읽은 논문 숨기기. 북마크한 건 읽었어도 남긴다. */
+    private val _hideRead = MutableStateFlow(false)
+
+    // combine 인자 한도를 넘기지 않으려고 화면 필터 두 개를 먼저 묶는다.
+    private val filters = combine(_selectedField, _hideRead) { field, hideRead -> field to hideRead }
+
     // 백그라운드 워커나 설정 탭에서 시작된 동기화도 피드 상단에 그대로 비친다.
     private val syncInfo = concrete?.syncInfo() ?: flowOf(SyncInfo())
 
@@ -39,21 +46,21 @@ class FeedViewModel(private val repository: PaperRepository) : ViewModel() {
 
     val uiState: StateFlow<FeedUiState> = combine(
         repository.getPapers(),
-        _selectedField,
+        filters,
         _isRefreshing,
         sourcePrefs,
         syncInfo
-    ) { papers, selectedField, isRefreshing, prefs, info ->
-        val filteredPapers = if (selectedField == null) {
-            papers
-        } else {
-            papers.filter { it.fields.contains(selectedField) }
-        }
+    ) { papers, filter, isRefreshing, prefs, info ->
+        val (selectedField, hideRead) = filter
+        val filteredPapers = papers
+                .filter { selectedField == null || it.fields.contains(selectedField) }
+                .filter { !hideRead || !it.isRead || it.isBookmarked }
         FeedUiState(
             papers = filteredPapers.sortedByDescending { it.publishedDate },
             selectedField = selectedField,
             isRefreshing = isRefreshing || info.isSyncing,
             showPreprints = prefs.arxivEnabled,
+                hideRead = hideRead,
             lastSyncMillis = info.lastSyncMillis,
             lastError = info.lastError
         )
@@ -67,6 +74,10 @@ class FeedViewModel(private val repository: PaperRepository) : ViewModel() {
         val target = concrete ?: return
         val next = !uiState.value.showPreprints
         viewModelScope.launch { target.setPreprintsEnabled(next) }
+    }
+
+    fun toggleHideRead() {
+        _hideRead.value = !_hideRead.value
     }
 
     fun setFieldFilter(field: Field?) {

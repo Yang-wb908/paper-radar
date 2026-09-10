@@ -135,6 +135,7 @@ fun AppNavHost(
                     uiState = uiState,
                     onFilterSelected = viewModel::setFieldFilter,
                     onTogglePreprints = viewModel::togglePreprints,
+                        onToggleHideRead = viewModel::toggleHideRead,
                     onToggleBookmark = viewModel::toggleBookmark,
                     onRefresh = viewModel::refresh,
                     onNavigateToSearch = { navController.navigate(Screen.Search.route) },
@@ -148,6 +149,11 @@ fun AppNavHost(
                     uiState = uiState,
                     onQueryChange = viewModel::onQueryChange,
                     onSearch = viewModel::onSearch,
+                        onSetPeriod = viewModel::setPeriod,
+                        onRecentClick = { keyword ->
+                            viewModel.onQueryChange(keyword)
+                            viewModel.onSearch(keyword)
+                        },
                     onToggleField = viewModel::toggleField,
                     onToggleBookmark = viewModel::toggleBookmark,
                     onNavigateToDetail = { paperId -> navController.navigate("detail/" + Uri.encode(paperId)) }

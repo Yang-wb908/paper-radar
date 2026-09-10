@@ -144,9 +144,9 @@ object FieldTagger {
         abstract: String?,
         topics: List<String>
     ): Set<Field> {
-        JournalCatalog.byName(journal)?.fields
-            ?.takeIf { it.isNotEmpty() }
-            ?.let { return it }
+        // 저널 매핑은 1순위지만 단독으로 끝내지 않는다.
+        // Nature Materials의 배터리 논문이 "반도체"로만 뜨던 문제를 막기 위해 키워드와 합친다.
+        val fromJournal = JournalCatalog.byName(journal)?.fields.orEmpty()
 
         val hay = buildString {
             append(title.lowercase()).append(' ')
@@ -161,6 +161,9 @@ object FieldTagger {
         if (ENERGY_KEYS.any { hay.contains(it) }) hits.add(Field.ENERGY)
         if (BIO_KEYS.any { hay.contains(it) }) hits.add(Field.BIO)
 
-        return if (hits.isEmpty()) setOf(Field.OTHER) else hits
+        val merged = LinkedHashSet<Field>()
+        merged.addAll(fromJournal)
+        merged.addAll(hits)
+        return if (merged.isEmpty()) setOf(Field.OTHER) else merged
     }
 }
